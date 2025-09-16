@@ -1,292 +1,328 @@
+// js/app.js
+(() => {
+  // ====== State & Data ======
+  const translations = {
+    en: {
+      appTitle: "Corporate Chat",
+      suspicionLabel: "Suspicion:",
+      contactsLabel: "Contacts",
+      selectContact: "Select a contact to start chatting",
+      noMessages: "No messages yet",
+      inputPlaceholder: "Type a message...",
+      statusOnline: "Online",
+      statusAway: "Away",
+      statusOffline: "Offline",
+    },
+    it: {
+      appTitle: "Chat Aziendale",
+      suspicionLabel: "Sospetto:",
+      contactsLabel: "Contatti",
+      selectContact: "Seleziona un contatto per iniziare a chattare",
+      noMessages: "Ancora nessun messaggio",
+      inputPlaceholder: "Scrivi un messaggio...",
+      statusOnline: "Online",
+      statusAway: "Assente",
+      statusOffline: "Offline",
+    },
+  };
 
-        document.addEventListener('DOMContentLoaded', function() {
-            feather.replace();
-            AOS.init();
+  // Demo contacts
+  const contacts = [
+    { id: 1, name: "John Doe", initial: "JD", status: "online" },
+    { id: 2, name: "Alice Smith", initial: "AS", status: "away" },
+    { id: 3, name: "Bob Johnson", initial: "BJ", status: "offline" },
+    { id: 4, name: "Emma Wilson", initial: "EW", status: "online" },
+    { id: 5, name: "Michael Brown", initial: "MB", status: "offline" },
+  ];
 
-            // Translations
-            const translations = {
-                en: {
-                    appTitle: "Corporate Chat",
-                    suspicionLabel: "Suspicion:",
-                    contactsLabel: "Contacts",
-                    selectContact: "Select a contact to start chatting",
-                    noMessages: "No messages yet",
-                    inputPlaceholder: "Type a message...",
-                    statusOnline: "Online",
-                    statusAway: "Away",
-                    statusOffline: "Offline"
-                },
-                it: {
-                    appTitle: "Chat Aziendale",
-                    suspicionLabel: "Sospetto:",
-                    contactsLabel: "Contatti",
-                    selectContact: "Seleziona un contatto per iniziare a chattare",
-                    noMessages: "Ancora nessun messaggio",
-                    inputPlaceholder: "Scrivi un messaggio...",
-                    statusOnline: "Online",
-                    statusAway: "Assente",
-                    statusOffline: "Offline"
-                }
-            };
+  // Demo messages
+  const sampleMessages = {
+    1: [
+      { text: "Hi there! How are you?", sender: "contact", time: "10:30 AM" },
+      { text: "I'm good, thanks! Just working on the quarterly report.", sender: "user", time: "10:32 AM" },
+      { text: "Great! Let me know if you need any help with it.", sender: "contact", time: "10:33 AM" },
+    ],
+    2: [
+      { text: "Don't forget about the meeting tomorrow at 2 PM.", sender: "contact", time: "Yesterday" },
+      { text: "Got it! I'll be there.", sender: "user", time: "Yesterday" },
+    ],
+    3: [],
+    4: [
+      { text: "The project deadline has been extended to next Friday.", sender: "contact", time: "Monday" },
+      { text: "That's great news! We'll have more time to polish everything.", sender: "user", time: "Monday" },
+    ],
+    5: [],
+  };
 
-            // Sample data
-            const contacts = [
-                { id: 1, name: "John Doe", initial: "JD", status: "online" },
-                { id: 2, name: "Alice Smith", initial: "AS", status: "away" },
-                { id: 3, name: "Bob Johnson", initial: "BJ", status: "offline" },
-                { id: 4, name: "Emma Wilson", initial: "EW", status: "online" },
-                { id: 5, name: "Michael Brown", initial: "MB", status: "offline" }
-            ];
+  // App state
+  let currentLanguage = localStorage.getItem("lang") || "en";
+  let currentContact = null;
+  let suspicionLevel = 0;
 
-            const sampleMessages = {
-                1: [
-                    { text: "Hi there! How are you?", sender: "contact", time: "10:30 AM" },
-                    { text: "I'm good, thanks! Just working on the quarterly report.", sender: "user", time: "10:32 AM" },
-                    { text: "Great! Let me know if you need any help with it.", sender: "contact", time: "10:33 AM" }
-                ],
-                2: [
-                    { text: "Don't forget about the meeting tomorrow at 2 PM.", sender: "contact", time: "Yesterday" },
-                    { text: "Got it! I'll be there.", sender: "user", time: "Yesterday" }
-                ],
-                3: [],
-                4: [
-                    { text: "The project deadline has been extended to next Friday.", sender: "contact", time: "Monday" },
-                    { text: "That's great news! We'll have more time to polish everything.", sender: "user", time: "Monday" }
-                ],
-                5: []
-            };
+  // ====== DOM Cache ======
+  const contactsList = document.getElementById("contacts-list");
+  const noContactSelected = document.getElementById("no-contact-selected");
+  const contactHeader = document.getElementById("contact-header");
+  const contactInitial = document.getElementById("contact-initial");
+  const contactName = document.getElementById("contact-name");
+  const contactStatus = document.getElementById("contact-status");
 
-            // Current state
-            let currentLanguage = 'en';
-            let currentContact = null;
-            let suspicionLevel = 0;
+  const messagesContainer = document.getElementById("messages-container");
+  const noMessages = document.getElementById("no-messages");
 
-            // DOM elements
-            const contactsList = document.getElementById('contacts-list');
-            const noContactSelected = document.getElementById('no-contact-selected');
-            const contactHeader = document.getElementById('contact-header');
-            const contactInitial = document.getElementById('contact-initial');
-            const contactName = document.getElementById('contact-name');
-            const contactStatus = document.getElementById('contact-status');
-            const messagesContainer = document.getElementById('messages-container');
-            const noMessages = document.getElementById('no-messages');
-            const messageInput = document.getElementById('message-input');
-            const sendButton = document.getElementById('send-button');
-            const languageToggle = document.getElementById('language-toggle');
-            const languageDropdown = document.getElementById('language-dropdown');
-            const currentLanguageSpan = document.getElementById('current-language');
+  const messageInput = document.getElementById("message-input");
+  const sendButton = document.getElementById("send-button");
 
-            // Initialize the app
-            function initApp() {
-                renderContacts();
-                setupEventListeners();
-                updateUI();
-            }
+  const languageToggle = document.getElementById("language-toggle");
+  const languageDropdown = document.getElementById("language-dropdown");
+  const currentLanguageSpan = document.getElementById("current-language");
 
-            // Render contacts in the sidebar
-            function renderContacts() {
-                contactsList.innerHTML = '';
-                
-                contacts.forEach(contact => {
-                    const contactElement = document.createElement('div');
-                    contactElement.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${currentContact?.id === contact.id ? 'bg-blue-50' : ''}`;
-                    contactElement.dataset.id = contact.id;
-                    
-                    const initial = document.createElement('div');
-                    initial.className = 'w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold';
-                    initial.textContent = contact.initial;
-                    
-                    const details = document.createElement('div');
-                    details.className = 'flex-1 min-w-0';
-                    
-                    const name = document.createElement('h3');
-                    name.className = 'text-sm font-semibold text-gray-800 truncate';
-                    name.textContent = contact.name;
-                    
-                    const status = document.createElement('p');
-                    status.className = 'text-xs flex items-center';
-                    
-                    const statusDot = document.createElement('span');
-                    statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
-                    
-                    const statusText = document.createElement('span');
-                    statusText.className = 'text-gray-500';
-                    statusText.textContent = translations[currentLanguage][`status${contact.status.charAt(0).toUpperCase() + contact.status.slice(1)}`];
-                    
-                    status.appendChild(statusDot);
-                    status.appendChild(statusText);
-                    details.appendChild(name);
-                    details.appendChild(status);
-                    contactElement.appendChild(initial);
-                    contactElement.appendChild(details);
-                    
-                    contactElement.addEventListener('click', () => selectContact(contact.id));
-                    contactsList.appendChild(contactElement);
-                });
-            }
+  const suspicionLabel = document.getElementById("suspicion-label");
+  const suspicionLevelSpan = document.getElementById("suspicion-level");
 
-            // Select a contact and show their chat
-            function selectContact(contactId) {
-                currentContact = contacts.find(c => c.id === contactId);
-                updateUI();
-                renderMessages();
-            }
+  // ====== Rendering ======
+  function renderContacts() {
+    contactsList.innerHTML = "";
 
-            // Render messages for the selected contact
-            function renderMessages() {
-                messagesContainer.innerHTML = '';
-                
-                if (!currentContact) {
-                    noMessages.style.display = 'flex';
-                    return;
-                }
-                
-                const messages = sampleMessages[currentContact.id] || [];
-                
-                if (messages.length === 0) {
-                    noMessages.style.display = 'flex';
-                    return;
-                }
-                
-                noMessages.style.display = 'none';
-                
-                messages.forEach(message => {
-                    const messageElement = document.createElement('div');
-                    messageElement.className = `flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`;
-                    
-                    const messageBubble = document.createElement('div');
-                    messageBubble.className = `max-w-xs px-4 py-2 ${message.sender === 'user' ? 'message-user' : 'message-contact'}`;
-                    
-                    const messageText = document.createElement('p');
-                    messageText.className = 'text-sm';
-                    messageText.textContent = message.text;
-                    
-                    const messageTime = document.createElement('p');
-                    messageTime.className = 'text-xs mt-1 text-right opacity-70';
-                    messageTime.textContent = message.time;
-                    
-                    messageBubble.appendChild(messageText);
-                    messageBubble.appendChild(messageTime);
-                    messageElement.appendChild(messageBubble);
-                    messagesContainer.appendChild(messageElement);
-                });
-                
-                // Scroll to bottom
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }
+    contacts.forEach((contact) => {
+      const row = document.createElement("div");
+      row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
+        currentContact?.id === contact.id ? "bg-blue-50" : ""
+      }`;
+      row.dataset.id = contact.id;
 
-            // Send a new message
-            function sendMessage() {
-                const text = messageInput.value.trim();
-                if (!text || !currentContact) return;
-                
-                // Add user message
-                const newUserMessage = {
-                    text: text,
-                    sender: 'user',
-                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                
-                if (!sampleMessages[currentContact.id]) {
-                    sampleMessages[currentContact.id] = [];
-                }
-                
-                sampleMessages[currentContact.id].push(newUserMessage);
-                messageInput.value = '';
-                renderMessages();
-                
-                // Simulate response after 1-2 seconds
-                setTimeout(() => {
-                    const responses = [
-                        "Got it, thanks!",
-                        "I'll look into that.",
-                        "Let me check and get back to you.",
-                        "Sounds good!",
-                        "We should discuss this in our next meeting.",
-                        "Can you send me more details about this?",
-                        "I agree with your point.",
-                        "Interesting suggestion."
-                    ];
-                    
-                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                    
-                    const newContactMessage = {
-                        text: randomResponse,
-                        sender: 'contact',
-                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    };
-                    
-                    sampleMessages[currentContact.id].push(newContactMessage);
-                    renderMessages();
-                    
-                    // Increase suspicion level slightly
-                    suspicionLevel = Math.min(100, suspicionLevel + 5);
-                    document.getElementById('suspicion-level').textContent = `${suspicionLevel}%`;
-                }, 1000 + Math.random() * 1000);
-            }
+      const initial = document.createElement("div");
+      initial.className =
+        "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
+      initial.textContent = contact.initial;
 
-            // Change language
-            function changeLanguage(lang) {
-                currentLanguage = lang;
-                currentLanguageSpan.textContent = lang.toUpperCase();
-                updateUI();
-            }
+      const details = document.createElement("div");
+      details.className = "flex-1 min-w-0";
 
-            // Update UI based on current state
-            function updateUI() {
-                // Update translations
-                document.getElementById('app-title').textContent = translations[currentLanguage].appTitle;
-                document.getElementById('suspicion-label').textContent = translations[currentLanguage].suspicionLabel;
-                document.getElementById('contacts-label').textContent = translations[currentLanguage].contactsLabel;
-                document.getElementById('no-contact-selected').textContent = translations[currentLanguage].selectContact;
-                document.getElementById('no-messages').textContent = translations[currentLanguage].noMessages;
-                messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
-                
-                // Update contact header
-                if (currentContact) {
-                    noContactSelected.style.display = 'none';
-                    contactHeader.style.display = 'flex';
-                    contactInitial.textContent = currentContact.initial;
-                    contactName.textContent = currentContact.name;
-                    contactStatus.textContent = translations[currentLanguage][`status${currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1)}`];
-                } else {
-                    noContactSelected.style.display = 'block';
-                    contactHeader.style.display = 'none';
-                }
-                
-                // Re-render contacts to update status translations
-                renderContacts();
-            }
+      const name = document.createElement("h3");
+      name.className = "text-sm font-semibold text-gray-800 truncate";
+      name.textContent = contact.name;
 
-            // Setup event listeners
-            function setupEventListeners() {
-                // Send message on button click or Enter key
-                sendButton.addEventListener('click', sendMessage);
-                messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') sendMessage();
-                });
-                
-                // Language toggle
-                languageToggle.addEventListener('click', () => {
-                    languageDropdown.classList.toggle('hidden');
-                });
-                
-                // Language selection
-                document.querySelectorAll('[data-lang]').forEach(button => {
-                    button.addEventListener('click', () => {
-                        changeLanguage(button.dataset.lang);
-                        languageDropdown.classList.add('hidden');
-                    });
-                });
-                
-                // Close dropdown when clicking outside
-                document.addEventListener('click', (e) => {
-                    if (!languageToggle.contains(e.target) && !languageDropdown.contains(e.target)) {
-                        languageDropdown.classList.add('hidden');
-                    }
-                });
-            }
+      const status = document.createElement("p");
+      status.className = "text-xs flex items-center";
 
-            // Start the app
-            initApp();
-        });
+      const statusDot = document.createElement("span");
+      statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
+
+      const statusText = document.createElement("span");
+      statusText.className = "text-gray-500";
+      const statusKey = "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
+      statusText.textContent = translations[currentLanguage][statusKey];
+
+      status.appendChild(statusDot);
+      status.appendChild(statusText);
+
+      details.appendChild(name);
+      details.appendChild(status);
+
+      row.appendChild(initial);
+      row.appendChild(details);
+
+      contactsList.appendChild(row);
+    });
+  }
+
+  function renderMessages() {
+    messagesContainer.innerHTML = "";
+
+    if (!currentContact) {
+      noMessages.style.display = "flex";
+      return;
+    }
+
+    const messages = sampleMessages[currentContact.id] || [];
+    if (messages.length === 0) {
+      noMessages.style.display = "flex";
+      return;
+    }
+
+    noMessages.style.display = "none";
+
+    messages.forEach((m) => {
+      const line = document.createElement("div");
+      line.className = `flex ${m.sender === "user" ? "justify-end" : "justify-start"}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = `max-w-xs px-4 py-2 ${m.sender === "user" ? "message-user" : "message-contact"}`;
+
+      const text = document.createElement("p");
+      text.className = "text-sm";
+      text.textContent = m.text;
+
+      const time = document.createElement("p");
+      time.className = "text-xs mt-1 text-right opacity-70";
+      time.textContent = m.time;
+
+      bubble.appendChild(text);
+      bubble.appendChild(time);
+      line.appendChild(bubble);
+      messagesContainer.appendChild(line);
+    });
+
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+
+  // ====== Logic ======
+  function selectContact(contactId) {
+    const next = contacts.find((c) => c.id === contactId);
+    if (!next) return;
+
+    currentContact = next;
+
+    // Aggiorna header contatto (senza passare da updateUI)
+    noContactSelected.style.display = "none";
+    contactHeader.style.display = "flex";
+    contactInitial.textContent = currentContact.initial;
+    contactName.textContent = currentContact.name;
+    const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
+    contactStatus.textContent = translations[currentLanguage][statusKey];
+
+    // Render messaggi + highlight sidebar
+    renderMessages();
+    renderContacts();
+
+    // (opzionale) ricorda ultimo contatto
+    // localStorage.setItem('lastContact', String(contactId));
+  }
+
+  function sendMessage() {
+    const text = messageInput.value.trim();
+    if (!text || !currentContact) return;
+
+    const msg = {
+      text,
+      sender: "user",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    if (!sampleMessages[currentContact.id]) sampleMessages[currentContact.id] = [];
+    sampleMessages[currentContact.id].push(msg);
+    messageInput.value = "";
+    renderMessages();
+
+    // Simula risposta NPC
+    setTimeout(() => {
+      const responses = [
+        "Got it, thanks!",
+        "I'll look into that.",
+        "Let me check and get back to you.",
+        "Sounds good!",
+        "We should discuss this in our next meeting.",
+        "Can you send me more details about this?",
+        "I agree with your point.",
+        "Interesting suggestion.",
+      ];
+      const reply = {
+        text: responses[Math.floor(Math.random() * responses.length)],
+        sender: "contact",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      sampleMessages[currentContact.id].push(reply);
+      renderMessages();
+
+      updateSuspicion(Math.min(100, suspicionLevel + 5));
+    }, 800 + Math.random() * 800);
+  }
+
+  function updateSuspicion(newLevel) {
+    suspicionLevel = newLevel;
+    suspicionLevelSpan.textContent = `${suspicionLevel}%`;
+
+    if (suspicionLevel >= 70) {
+      suspicionLevelSpan.style.color = "#ef4444"; // red-500
+    } else if (suspicionLevel >= 30) {
+      suspicionLevelSpan.style.color = "#f59e0b"; // amber-500
+    } else {
+      suspicionLevelSpan.style.color = ""; // default
+    }
+  }
+
+  function changeLanguage(lang) {
+    currentLanguage = lang;
+    localStorage.setItem("lang", lang);
+    currentLanguageSpan.textContent = lang.toUpperCase();
+    updateUI();
+  }
+
+  function updateUI() {
+    // Testi statici tradotti
+    document.getElementById("app-title").textContent = translations[currentLanguage].appTitle;
+    suspicionLabel.textContent = translations[currentLanguage].suspicionLabel;
+    document.getElementById("contacts-label").textContent = translations[currentLanguage].contactsLabel;
+    document.getElementById("no-contact-selected").textContent = translations[currentLanguage].selectContact;
+    document.getElementById("no-messages").textContent = translations[currentLanguage].noMessages;
+    messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
+
+    // Header del contatto se già selezionato
+    if (currentContact) {
+      const statusKey =
+        "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
+      contactStatus.textContent = translations[currentLanguage][statusKey];
+    }
+
+    // Rirenderizza sidebar per aggiornare testi di stato e highlight
+    renderContacts();
+  }
+
+  // ====== Events ======
+  function setupEventListeners() {
+    // Invia messaggio
+    sendButton.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    // Toggle lingua (dropdown)
+    languageToggle.addEventListener("click", () => {
+      languageDropdown.classList.toggle("hidden");
+    });
+
+    // Selezione lingua
+    document.querySelectorAll("[data-lang]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        changeLanguage(btn.dataset.lang);
+        languageDropdown.classList.add("hidden");
+      });
+    });
+
+    // Chiudi dropdown se clicchi fuori
+    document.addEventListener("click", (e) => {
+      if (!languageToggle.contains(e.target) && !languageDropdown.contains(e.target)) {
+        languageDropdown.classList.add("hidden");
+      }
+    });
+
+    // DELEGA: click sui contatti in sidebar
+    contactsList.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-id]");
+      if (!row) return;
+      const id = Number(row.dataset.id);
+      // console.log("Click su contatto:", id);
+      selectContact(id);
+    });
+  }
+
+  // ====== Init ======
+  function initApp() {
+    currentLanguageSpan.textContent = currentLanguage.toUpperCase();
+    updateSuspicion(0);
+
+    renderContacts();
+    setupEventListeners();
+    updateUI();
+
+    // (opzionale) ripristina ultimo contatto
+    // const last = Number(localStorage.getItem('lastContact'));
+    // if (last) selectContact(last);
+
+    // Icone / animazioni
+    if (window.feather) feather.replace();
+    if (window.AOS) AOS.init();
+  }
+
+  initApp();
+})();
