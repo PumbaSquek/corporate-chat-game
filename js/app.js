@@ -54,7 +54,30 @@
     5: [],
   };
 
-  // App state
+  // ====== API layer (mock per ora, pronto per backend) ======
+  const API = {
+    async getContacts() {
+      return contacts;
+    },
+    async getMessages(contactId) {
+      return sampleMessages[contactId] || [];
+    },
+    async sendMessage(contactId, text) {
+      const replyPool = [
+        "Got it, thanks!",
+        "I'll look into that.",
+        "Let me check and get back to you.",
+        "Sounds good!",
+        "Can you send me more details?",
+      ];
+      return {
+        reply: replyPool[Math.floor(Math.random() * replyPool.length)],
+        suspicion: Math.min(100, suspicionLevel + 5),
+      };
+    },
+  };
+
+  // ====== App state ======
   let currentLanguage = localStorage.getItem("lang") || "en";
   let currentContact = null;
   let suspicionLevel = 0;
@@ -174,7 +197,6 @@
 
     currentContact = next;
 
-    // Aggiorna header contatto (senza passare da updateUI)
     noContactSelected.style.display = "none";
     contactHeader.style.display = "flex";
     contactInitial.textContent = currentContact.initial;
@@ -182,12 +204,8 @@
     const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
     contactStatus.textContent = translations[currentLanguage][statusKey];
 
-    // Render messaggi + highlight sidebar
     renderMessages();
     renderContacts();
-
-    // (opzionale) ricorda ultimo contatto
-    // localStorage.setItem('lastContact', String(contactId));
   }
 
   function sendMessage() {
@@ -204,28 +222,17 @@
     messageInput.value = "";
     renderMessages();
 
-    // Simula risposta NPC
-    setTimeout(() => {
-      const responses = [
-        "Got it, thanks!",
-        "I'll look into that.",
-        "Let me check and get back to you.",
-        "Sounds good!",
-        "We should discuss this in our next meeting.",
-        "Can you send me more details about this?",
-        "I agree with your point.",
-        "Interesting suggestion.",
-      ];
+    // Simula risposta via API mock
+    API.sendMessage(currentContact.id, text).then((res) => {
       const reply = {
-        text: responses[Math.floor(Math.random() * responses.length)],
+        text: res.reply,
         sender: "contact",
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       sampleMessages[currentContact.id].push(reply);
       renderMessages();
-
-      updateSuspicion(Math.min(100, suspicionLevel + 5));
-    }, 800 + Math.random() * 800);
+      updateSuspicion(res.suspicion);
+    });
   }
 
   function updateSuspicion(newLevel) {
@@ -249,7 +256,6 @@
   }
 
   function updateUI() {
-    // Testi statici tradotti
     document.getElementById("app-title").textContent = translations[currentLanguage].appTitle;
     suspicionLabel.textContent = translations[currentLanguage].suspicionLabel;
     document.getElementById("contacts-label").textContent = translations[currentLanguage].contactsLabel;
@@ -257,34 +263,29 @@
     document.getElementById("no-messages").textContent = translations[currentLanguage].noMessages;
     messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
 
-    // Header del contatto se già selezionato
     if (currentContact) {
       const statusKey =
         "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
       contactStatus.textContent = translations[currentLanguage][statusKey];
     }
 
-    // Rirenderizza sidebar per aggiornare testi di stato e highlight
     renderContacts();
   }
 
   // ====== Events ======
   function setupEventListeners() {
-    // Invia messaggio
     sendButton.addEventListener("click", sendMessage);
     messageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-       e.preventDefault();
-       sendMessage();
-    }
-});
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
-    // Toggle lingua (dropdown)
     languageToggle.addEventListener("click", () => {
       languageDropdown.classList.toggle("hidden");
     });
 
-    // Selezione lingua
     document.querySelectorAll("[data-lang]").forEach((btn) => {
       btn.addEventListener("click", () => {
         changeLanguage(btn.dataset.lang);
@@ -292,19 +293,16 @@
       });
     });
 
-    // Chiudi dropdown se clicchi fuori
     document.addEventListener("click", (e) => {
       if (!languageToggle.contains(e.target) && !languageDropdown.contains(e.target)) {
         languageDropdown.classList.add("hidden");
       }
     });
 
-    // DELEGA: click sui contatti in sidebar
     contactsList.addEventListener("click", (e) => {
       const row = e.target.closest("[data-id]");
       if (!row) return;
       const id = Number(row.dataset.id);
-      // console.log("Click su contatto:", id);
       selectContact(id);
     });
   }
@@ -318,11 +316,6 @@
     setupEventListeners();
     updateUI();
 
-    // (opzionale) ripristina ultimo contatto
-    // const last = Number(localStorage.getItem('lastContact'));
-    // if (last) selectContact(last);
-
-    // Icone / animazioni
     if (window.feather) feather.replace();
     if (window.AOS) AOS.init();
   }

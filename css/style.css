@@ -1,6 +1,46 @@
+/* Stato contatti */
+.status-online {
+  background-color: #10B981; /* verde (tailwind green-500) */
+}
+.status-away {
+  background-color: #F59E0B; /* arancio (tailwind amber-500) */
+}
+.status-offline {
+  background-color: #64748B; /* grigio (tailwind slate-500) */
+}
 
-        .status-online { background-color: #10B981; }
-        .status-away { background-color: #F59E0B; }
-        .status-offline { background-color: #64748B; }
-        .message-user { background-color: #3B82F6; color: white; border-radius: 1rem 1rem 0 1rem; }
-        .message-contact { background-color: #E5E7EB; color: #1F2937; border-radius: 1rem 1rem 1rem 0; }
+/* Messaggi utente */
+.message-user {
+  background-color: #3B82F6; /* blu (tailwind blue-500) */
+  color: #ffffff;
+  border-radius: 1rem 1rem 0 1rem;
+  padding: 0.5rem 1rem;
+  max-width: 70%;
+  word-wrap: break-word;
+}
+
+/* Messaggi contatto */
+.message-contact {
+  background-color: #E5E7EB; /* grigio chiaro (tailwind gray-200) */
+  color: #1F2937; /* grigio scuro (tailwind gray-800) */
+  border-radius: 1rem 1rem 1rem 0;
+  padding: 0.5rem 1rem;
+  max-width: 70%;
+  word-wrap: break-word;
+}
+
+/* Scrollbar messaggi (più sottile e discreta) */
+#messages-container {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent; /* grigio tailwind slate-300 */
+}
+#messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+#messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+#messages-container::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 3px;
+}
