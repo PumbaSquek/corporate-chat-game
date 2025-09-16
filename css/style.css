@@ -1,0 +1,6 @@
+
+        .status-online { background-color: #10B981; }
+        .status-away { background-color: #F59E0B; }
+        .status-offline { background-color: #64748B; }
+        .message-user { background-color: #3B82F6; color: white; border-radius: 1rem 1rem 0 1rem; }
+        .message-contact { background-color: #E5E7EB; color: #1F2937; border-radius: 1rem 1rem 1rem 0; }
