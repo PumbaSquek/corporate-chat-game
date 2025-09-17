@@ -26,13 +26,15 @@
     },
   };
 
-  // Demo contacts
+  // Demo contacts (con ruoli)
   const contacts = [
-    { id: 1, name: "John Doe", initial: "JD", status: "online" },
-    { id: 2, name: "Alice Smith", initial: "AS", status: "away" },
-    { id: 3, name: "Bob Johnson", initial: "BJ", status: "offline" },
-    { id: 4, name: "Emma Wilson", initial: "EW", status: "online" },
-    { id: 5, name: "Michael Brown", initial: "MB", status: "offline" },
+    { id: 1, name: "Francesco Viola", initial: "FV", role: "Manager", status: "online", rapport: 50, busyLevel: 20 },
+    { id: 2, name: "Giuseppe Origlia", initial: "GO", role: "Associate Manager", status: "away", rapport: 40, busyLevel: 30 },
+    { id: 3, name: "Luciano Rinaldi", initial: "LR", role: "Associate Manager", status: "offline", rapport: 35, busyLevel: 60 },
+    { id: 4, name: "Sebastiano Fotia", initial: "SF", role: "Senior", status: "online", rapport: 45, busyLevel: 50 },
+    { id: 5, name: "Michael Brown", initial: "MB", role: "Senior", status: "offline", rapport: 30, busyLevel: 70 },
+    { id: 6, name: "Marco Esposito", initial: "ME", role: "Associate", status: "online", rapport: 25, busyLevel: 20 },
+    { id: 7, name: "Elena Russo", initial: "ER", role: "Associate", status: "offline", rapport: 25, busyLevel: 40 }
   ];
 
   // Demo messages
@@ -41,20 +43,10 @@
       { text: "Hi there! How are you?", sender: "contact", time: "10:30 AM" },
       { text: "I'm good, thanks! Just working on the quarterly report.", sender: "user", time: "10:32 AM" },
       { text: "Great! Let me know if you need any help with it.", sender: "contact", time: "10:33 AM" },
-    ],
-    2: [
-      { text: "Don't forget about the meeting tomorrow at 2 PM.", sender: "contact", time: "Yesterday" },
-      { text: "Got it! I'll be there.", sender: "user", time: "Yesterday" },
-    ],
-    3: [],
-    4: [
-      { text: "The project deadline has been extended to next Friday.", sender: "contact", time: "Monday" },
-      { text: "That's great news! We'll have more time to polish everything.", sender: "user", time: "Monday" },
-    ],
-    5: [],
+    ]
   };
 
-  // ====== API layer (mock per ora, pronto per backend) ======
+  // ====== API layer (mock) ======
   const API = {
     async getContacts() {
       return contacts;
@@ -103,53 +95,88 @@
   const suspicionLabel = document.getElementById("suspicion-label");
   const suspicionLevelSpan = document.getElementById("suspicion-level");
 
-  // ====== Rendering ======
-  function renderContacts() {
-    contactsList.innerHTML = "";
+  // ====== DOM for tasks modal ======
+  const openTasksBtn = document.getElementById("open-tasks-btn");
+  const openTasksModal = document.getElementById("open-tasks-modal");
+  const closeTasksBtn = document.getElementById("close-tasks-btn");
+  const tasksTableBody = document.getElementById("tasks-table-body");
 
-    contacts.forEach((contact) => {
-      const row = document.createElement("div");
-      row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
-        currentContact?.id === contact.id ? "bg-blue-50" : ""
-      }`;
-      row.dataset.id = contact.id;
+  // ====== Tasks mock ======
+  let tasks = [];
 
-      const initial = document.createElement("div");
-      initial.className =
-        "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
-      initial.textContent = contact.initial;
+  // ====== Render tasks ======
+  function renderTasks() {
+    tasksTableBody.innerHTML = "";
 
-      const details = document.createElement("div");
-      details.className = "flex-1 min-w-0";
+    if (tasks.length === 0) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
+      tasksTableBody.appendChild(row);
+      return;
+    }
 
-      const name = document.createElement("h3");
-      name.className = "text-sm font-semibold text-gray-800 truncate";
-      name.textContent = contact.name;
-
-      const status = document.createElement("p");
-      status.className = "text-xs flex items-center";
-
-      const statusDot = document.createElement("span");
-      statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
-
-      const statusText = document.createElement("span");
-      statusText.className = "text-gray-500";
-      const statusKey = "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
-      statusText.textContent = translations[currentLanguage][statusKey];
-
-      status.appendChild(statusDot);
-      status.appendChild(statusText);
-
-      details.appendChild(name);
-      details.appendChild(status);
-
-      row.appendChild(initial);
-      row.appendChild(details);
-
-      contactsList.appendChild(row);
+    tasks.forEach(task => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="p-2 border">${task.title}</td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
+        <td class="p-2 border">${task.status}</td>
+        <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
+      `;
+      tasksTableBody.appendChild(row);
     });
   }
 
+  // ====== Rendering contacts ======
+function renderContacts() {
+  contactsList.innerHTML = "";
+
+  contacts.forEach((contact) => {
+    const row = document.createElement("div");
+    row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
+      currentContact?.id === contact.id ? "bg-blue-50" : ""
+    }`;
+    row.dataset.id = contact.id;
+
+    const initial = document.createElement("div");
+    initial.className =
+      "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
+    initial.textContent = contact.initial;
+
+    const details = document.createElement("div");
+    details.className = "flex-1 min-w-0";
+
+    const name = document.createElement("h3");
+    name.className = "text-sm font-semibold text-gray-800 truncate";
+    name.textContent = contact.name;
+
+    const status = document.createElement("p");
+    status.className = "text-xs flex items-center";
+
+    const statusDot = document.createElement("span");
+    statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
+
+    const statusText = document.createElement("span");
+    statusText.className = "text-gray-500";
+    const statusKey =
+      "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
+    statusText.textContent = translations[currentLanguage][statusKey];
+
+    status.appendChild(statusDot);
+    status.appendChild(statusText);
+
+    details.appendChild(name);
+    details.appendChild(status);
+
+    row.appendChild(initial);
+    row.appendChild(details);
+
+    contactsList.appendChild(row);
+  });
+}
+
+  // ====== Rendering messages ======
   function renderMessages() {
     messagesContainer.innerHTML = "";
 
@@ -191,22 +218,25 @@
   }
 
   // ====== Logic ======
-  function selectContact(contactId) {
-    const next = contacts.find((c) => c.id === contactId);
-    if (!next) return;
+function selectContact(contactId) {
+  const next = contacts.find((c) => c.id === contactId);
+  if (!next) return;
 
-    currentContact = next;
+  currentContact = next;
 
-    noContactSelected.style.display = "none";
-    contactHeader.style.display = "flex";
-    contactInitial.textContent = currentContact.initial;
-    contactName.textContent = currentContact.name;
-    const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
-    contactStatus.textContent = translations[currentLanguage][statusKey];
+  noContactSelected.style.display = "none";
+  contactHeader.style.display = "flex";
+  contactInitial.textContent = currentContact.initial;
+  contactName.textContent = currentContact.name;
 
-    renderMessages();
-    renderContacts();
-  }
+  // Mostra ruolo sotto al nome
+  contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][
+    "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1)
+  ]}`;
+
+  renderMessages();
+  renderContacts();
+}
 
   function sendMessage() {
     const text = messageInput.value.trim();
@@ -304,6 +334,20 @@
       if (!row) return;
       const id = Number(row.dataset.id);
       selectContact(id);
+    });
+
+    // Open Tasks modal
+    openTasksBtn.addEventListener("click", () => {
+      renderTasks();
+      openTasksModal.classList.remove("hidden");
+    });
+
+    closeTasksBtn.addEventListener("click", () => {
+      openTasksModal.classList.add("hidden");
+    });
+
+    openTasksModal.addEventListener("click", (e) => {
+      if (e.target === openTasksModal) openTasksModal.classList.add("hidden");
     });
   }
 
