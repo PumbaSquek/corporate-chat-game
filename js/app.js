@@ -1,5 +1,9 @@
 // js/app.js
 (() => {
+
+  // ====== Config API Base URL ======
+  const apiBaseUrl = `${window.location.protocol}//${window.location.hostname}:3000`;
+
   // ====== Traduzioni ======
   const translations = {
     en: {
@@ -89,7 +93,7 @@
   // ====== Init Manager Session ======
   async function initManagerSession() {
     try {
-      const res = await fetch("http://192.168.1.12:3000/api/manager/init", {
+      const res = await fetch(`${apiBaseUrl}/api/manager/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(managerSetup)
@@ -122,7 +126,7 @@
       }
 
       try {
-        const res = await fetch("http://192.168.1.12:3000/api/manager/evaluate", {
+        const res = await fetch(`${apiBaseUrl}/api/manager/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -149,7 +153,7 @@
   // ====== Genera Task ======
   async function generateTask(managerId) {
     try {
-      const res = await fetch("http://192.168.1.12:3000/api/manager/new-task", {
+      const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
@@ -287,7 +291,7 @@
         });
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
-        updateTaskBadge(); // 🔥 qui
+        updateTaskBadge();
 
         const sound = document.getElementById("task-sound");
         if (sound) {
@@ -352,7 +356,7 @@
       if (res.taskStatus && tasks.length > 0) {
         tasks[tasks.length - 1].status = res.taskStatus;
         renderTasks();
-        updateTaskBadge(); // 🔥 qui
+        updateTaskBadge();
       }
     });
   }
@@ -372,7 +376,7 @@
         });
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
-        updateTaskBadge(); // 🔥 qui
+        updateTaskBadge();
 
         const sound = document.getElementById("task-sound");
         if (sound) {
