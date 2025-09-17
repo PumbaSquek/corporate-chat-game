@@ -48,21 +48,18 @@
     }
   });
 
-  // Estraggo i dati del Manager
   const managerSetup = savedCharacters["Manager"] || {
     name: "Manager",
     traits: "severo, aziendale"
   };
 
-  // ====== Stato & Variabili ======
+  // ====== Stato ======
   const tasks = [];
   let currentLanguage = localStorage.getItem("lang") || "it";
   let currentContact = null;
   let suspicionLevel = 0;
   let managerSessionId = null;
   let taskInterval = null;
-
-  // ====== Messaggi demo ======
   const sampleMessages = {};
 
   // ====== Cache DOM ======
@@ -79,7 +76,6 @@
   const messageInput = document.getElementById("message-input");
   const sendButton = document.getElementById("send-button");
 
-  const suspicionLabel = document.getElementById("suspicion-label");
   const suspicionLevelSpan = document.getElementById("suspicion-level");
 
   const openTasksBtn = document.getElementById("open-tasks-btn");
@@ -90,7 +86,7 @@
   const currentLanguageSpan = document.getElementById("current-language");
   const requestTaskBtn = document.getElementById("request-task-btn");
 
-  // ====== Inizializza sessione Manager ======
+  // ====== Init Manager Session ======
   async function initManagerSession() {
     try {
       const res = await fetch("http://localhost:3000/api/manager/init", {
@@ -106,12 +102,11 @@
     }
   }
 
-  // ====== API layer ======
+  // ====== API ======
   const API = {
     async sendMessage(contactId, text) {
       const contact = contacts.find(c => c.id === contactId);
 
-      // Mock per contatti non Manager
       if (!contact || contact.role !== "Manager") {
         const replyPool = [
           "Got it, thanks!",
@@ -126,7 +121,6 @@
         };
       }
 
-      // Manager → backend
       try {
         const res = await fetch("http://localhost:3000/api/manager/evaluate", {
           method: "POST",
@@ -147,16 +141,12 @@
         };
       } catch (err) {
         console.error("Errore fetch evaluate:", err);
-        return {
-          reply: "Non riesco a rispondere ora.",
-          suspicionChange: 0,
-          taskStatus: "failed"
-        };
+        return { reply: "Non riesco a rispondere ora.", suspicionChange: 0, taskStatus: "failed" };
       }
     }
   };
 
-  // ====== Genera Task (IA) ======
+  // ====== Genera Task ======
   async function generateTask(managerId) {
     try {
       const res = await fetch("http://localhost:3000/api/manager/new-task", {
@@ -190,49 +180,35 @@
     }
   }
 
-  // ====== Render tasks ======
-  function renderTasks() {
-    tasksTableBody.innerHTML = "";
-    if (tasks.length === 0) {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
-      tasksTableBody.appendChild(row);
-      return;
-    }
-    tasks.forEach(task => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td class="p-2 border">${task.title}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
-        <td class="p-2 border">${task.status}</td>
-        <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
-      `;
-      tasksTableBody.appendChild(row);
-    });
-  }
-
-  // ====== Render contacts ======
+  // ====== Render Contacts ======
   function renderContacts() {
     contactsList.innerHTML = "";
-    const visibleContacts = contacts.filter(c => c.id !== 99); // 🔥 escludo il giocatore
+    const visibleContacts = contacts.filter(c => c.id !== 99);
     visibleContacts.forEach((c) => {
       const row = document.createElement("div");
       row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
         currentContact?.id === c.id ? "bg-blue-50" : ""
       }`;
       row.dataset.id = c.id;
+
       row.innerHTML = `
         <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">${c.initial}</div>
         <div class="flex-1 min-w-0">
           <h3 class="text-sm font-semibold text-gray-800 truncate">${c.name}</h3>
-          <p class="text-xs text-gray-500">${c.role}</p>
+          <p class="text-xs flex items-center text-gray-500">
+            <span class="w-2 h-2 rounded-full mr-1 ${
+              c.status === "online" ? "bg-green-500" :
+              c.status === "away" ? "bg-yellow-500" :
+              "bg-gray-400"
+            }"></span>
+            ${translations[currentLanguage]["status" + c.status.charAt(0).toUpperCase() + c.status.slice(1)]}
+          </p>
         </div>`;
       contactsList.appendChild(row);
     });
   }
 
-  // ====== Render messages ======
+  // ====== Render Messages ======
   function renderMessages() {
     messagesContainer.innerHTML = "";
     if (!currentContact) {
@@ -268,6 +244,18 @@
                                      suspicionLevel >= 30 ? "#f59e0b" : "";
   }
 
+  // ====== Aggiorna badge dei task ======
+  function updateTaskBadge() {
+    const badge = document.getElementById("open-tasks-count");
+    const count = tasks.filter(t => t.status === "assigned").length;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
+  }
+
   // ====== Eventi ======
   function setupEventListeners() {
     sendButton.addEventListener("click", sendMessage);
@@ -284,16 +272,12 @@
       openTasksModal.classList.remove("hidden");
     });
 
-    // 🔥 Pulsante Richiedi Task
     requestTaskBtn.addEventListener("click", () => {
       const manager = contacts.find(c => c.role === "Manager");
       if (!manager) return;
-
-      // reset intervallo
       if (taskInterval) clearInterval(taskInterval);
       taskInterval = startTaskLoop();
 
-      // genera subito un task
       generateTask(manager.id).then((newTask) => {
         sampleMessages[manager.id] = sampleMessages[manager.id] || [];
         sampleMessages[manager.id].push({
@@ -301,11 +285,10 @@
           sender: manager.name,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         });
-
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
+        updateTaskBadge(); // 🔥 qui
 
-        // 🔊 Suono all'assegnazione manuale
         const sound = document.getElementById("task-sound");
         if (sound) {
           sound.currentTime = 0;
@@ -313,9 +296,31 @@
         }
       });
     });
-    }
+  }
 
-  // ====== Seleziona contatto ======
+  // ====== Render Tasks ======
+  function renderTasks() {
+    tasksTableBody.innerHTML = "";
+    if (tasks.length === 0) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
+      tasksTableBody.appendChild(row);
+      return;
+    }
+    tasks.forEach(task => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="p-2 border">${task.title}</td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
+        <td class="p-2 border">${task.status}</td>
+        <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
+      `;
+      tasksTableBody.appendChild(row);
+    });
+  }
+
+  // ====== Seleziona Contatto ======
   function selectContact(contactId) {
     const next = contacts.find((c) => c.id === contactId);
     if (!next) return;
@@ -330,7 +335,7 @@
     renderContacts();
   }
 
-  // ====== Invia messaggio ======
+  // ====== Invia Messaggio ======
   function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !currentContact) return;
@@ -347,6 +352,7 @@
       if (res.taskStatus && tasks.length > 0) {
         tasks[tasks.length - 1].status = res.taskStatus;
         renderTasks();
+        updateTaskBadge(); // 🔥 qui
       }
     });
   }
@@ -366,6 +372,13 @@
         });
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
+        updateTaskBadge(); // 🔥 qui
+
+        const sound = document.getElementById("task-sound");
+        if (sound) {
+          sound.currentTime = 0;
+          sound.play();
+        }
       });
     }, 2 * 60 * 1000);
   }
@@ -377,6 +390,7 @@
     renderContacts();
     setupEventListeners();
     initManagerSession();
+    if (taskInterval) clearInterval(taskInterval);
     taskInterval = startTaskLoop();
   }
 
