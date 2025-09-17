@@ -34,7 +34,9 @@
     { id: 4, name: "Sebastiano Fotia", initial: "SF", role: "Senior", status: "online", rapport: 45, busyLevel: 50 },
     { id: 5, name: "Michael Brown", initial: "MB", role: "Senior", status: "offline", rapport: 30, busyLevel: 70 },
     { id: 6, name: "Marco Esposito", initial: "ME", role: "Associate", status: "online", rapport: 25, busyLevel: 20 },
-    { id: 7, name: "Elena Russo", initial: "ER", role: "Associate", status: "offline", rapport: 25, busyLevel: 40 }
+    { id: 7, name: "Elena Russo", initial: "ER", role: "Associate", status: "offline", rapport: 25, busyLevel: 40 },
+    { id: 99, name: "You", initial: "Y", role: "Analyst", status: "online" }
+
   ];
 
   // Demo messages
@@ -45,6 +47,10 @@
       { text: "Great! Let me know if you need any help with it.", sender: "contact", time: "10:33 AM" },
     ]
   };
+
+  // ====== Tasks (inizialmente vuoti) ======
+  const tasks = [];
+
 
   // ====== API layer (mock) ======
   const API = {
@@ -100,9 +106,6 @@
   const openTasksModal = document.getElementById("open-tasks-modal");
   const closeTasksBtn = document.getElementById("close-tasks-btn");
   const tasksTableBody = document.getElementById("tasks-table-body");
-
-  // ====== Tasks mock ======
-  let tasks = [];
 
   // ====== Render tasks ======
   function renderTasks() {
@@ -217,6 +220,60 @@ function renderContacts() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
+  // ====== Task Notifications ======
+  function updateTaskNotification() {
+    const count = tasks.filter(t => t.status === "assigned").length;
+    const badge = document.getElementById("open-tasks-count");
+
+    if (count > 0) {
+      badge.textContent = count;
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
+  }
+
+  // ====== Manager Logic ======
+  function managerShouldAssignTask(managerId) {
+    // Conta i task aperti del player
+    const openTasks = tasks.filter(
+      t => t.assignedTo === 99 && ["assigned", "in_progress"].includes(t.status)
+    );
+
+    if (openTasks.length >= 3) return false; // già troppo lavoro
+
+    // Se un task scade entro 2 minuti → aspetta
+    const urgentTask = openTasks.find(t => t.deadline - Date.now() < 2 * 60 * 1000);
+    if (urgentTask) return false;
+
+    // Random factor → non sempre assegna
+    if (Math.random() < 0.5) return false;
+
+    return true;
+  }
+
+  function generateTask(managerId) {
+    const taskTemplates = [
+      "Prepare Q1 financial report",
+      "Review code for ticket #342",
+      "Update project documentation",
+      "Create a test plan for module X",
+      "Investigate bug in system Y"
+    ];
+
+    const task = {
+      id: Date.now(),
+      title: taskTemplates[Math.floor(Math.random() * taskTemplates.length)],
+      assignedBy: managerId,
+      assignedTo: 99, // il giocatore
+      status: "assigned",
+      deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000 // 3–7 min
+    };
+
+    tasks.push(task);
+    return task;
+  }
+
   // ====== Logic ======
 function selectContact(contactId) {
   const next = contacts.find((c) => c.id === contactId);
@@ -293,11 +350,13 @@ function selectContact(contactId) {
     document.getElementById("no-messages").textContent = translations[currentLanguage].noMessages;
     messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
 
-    if (currentContact) {
-      const statusKey =
-        "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
-      contactStatus.textContent = translations[currentLanguage][statusKey];
-    }
+   if (currentContact) {
+       const statusKey =
+         "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
+       contactStatus.textContent =
+         `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
+     }
+
 
     renderContacts();
   }
@@ -360,9 +419,43 @@ function selectContact(contactId) {
     setupEventListeners();
     updateUI();
 
+    updateTaskNotification();
+
     if (window.feather) feather.replace();
     if (window.AOS) AOS.init();
   }
 
   initApp();
+
+  // ====== Ciclo periodico per generare task ======
+setInterval(() => {
+  const manager = contacts.find(c => c.role === "Manager");
+  if (!manager) return;
+
+  if (managerShouldAssignTask(manager.id)) {
+    const newTask = generateTask(manager.id);
+
+    // Notifica in chat
+    sampleMessages[manager.id] = sampleMessages[manager.id] || [];
+    sampleMessages[manager.id].push({
+      text: `New task assigned: ${newTask.title}`,
+      sender: manager.name,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    });
+
+    if (currentContact && currentContact.id === manager.id) {
+      renderMessages();
+    }
+
+    // === NEW: aggiorna badge + suona beep ===
+    updateTaskNotification();
+    const sound = document.getElementById("task-sound");
+    if (sound) {
+      sound.currentTime = 0;
+      sound.play();
+    }
+
+    console.log("New task created:", newTask);
+  }
+}, 2 * 60 * 1000);
 })();
