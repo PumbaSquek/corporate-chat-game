@@ -89,7 +89,7 @@
   // ====== Init Manager Session ======
   async function initManagerSession() {
     try {
-      const res = await fetch("http://localhost:3000/api/manager/init", {
+      const res = await fetch("http://192.168.1.12:3000/api/manager/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(managerSetup)
@@ -122,7 +122,7 @@
       }
 
       try {
-        const res = await fetch("http://localhost:3000/api/manager/evaluate", {
+        const res = await fetch("http://192.168.1.12:3000/api/manager/evaluate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -149,7 +149,7 @@
   // ====== Genera Task ======
   async function generateTask(managerId) {
     try {
-      const res = await fetch("http://localhost:3000/api/manager/new-task", {
+      const res = await fetch("http://192.168.1.12:3000/api/manager/new-task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
