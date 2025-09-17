@@ -1,6 +1,5 @@
 // js/app.js
 (() => {
-
   // ====== Traduzioni ======
   const translations = {
     en: {
@@ -29,94 +28,37 @@
 
   // ====== Contatti demo ======
   const contacts = [
-    { id: 1, name: "Francesco Viola", initial: "FV", role: "Manager", status: "online", rapport: 50, busyLevel: 20, suspicionWeight: 2, memory: [] },
-    { id: 2, name: "Giuseppe Origlia", initial: "GO", role: "Associate Manager", status: "away", rapport: 40, busyLevel: 30 },
-    { id: 3, name: "Luciano Rinaldi", initial: "LR", role: "Associate Manager", status: "offline", rapport: 35, busyLevel: 60 },
-    { id: 4, name: "Sebastiano Fotia", initial: "SF", role: "Senior", status: "online", rapport: 45, busyLevel: 50 },
-    { id: 5, name: "Michael Brown", initial: "MB", role: "Senior", status: "offline", rapport: 30, busyLevel: 70 },
-    { id: 6, name: "Marco Esposito", initial: "ME", role: "Associate", status: "online", rapport: 25, busyLevel: 20 },
-    { id: 7, name: "Elena Russo", initial: "ER", role: "Associate", status: "offline", rapport: 25, busyLevel: 40 },
-    { id: 99, name: "You", initial: "Y", role: "Analyst", status: "online" }
+    { id: 1, role: "Manager", status: "online", initial: "M", name: "Manager" },
+    { id: 2, role: "Associate Manager", status: "away", initial: "AM", name: "Associate Manager" },
+    { id: 3, role: "Senior", status: "online", initial: "S", name: "Senior" },
+    { id: 4, role: "Associate", status: "offline", initial: "A", name: "Associate" },
+    { id: 99, role: "Analyst", status: "online", initial: "Y", name: "You" }
   ];
 
-  // ====== Messaggi demo ======
-  const sampleMessages = {
-    1: [
-      { text: "Hi there! How are you?", sender: "contact", time: "10:30 AM" },
-      { text: "I'm good, thanks! Just working on the quarterly report.", sender: "user", time: "10:32 AM" },
-      { text: "Great! Let me know if you need any help with it.", sender: "contact", time: "10:33 AM" },
-    ]
+  // ====== Override da Setup (se presenti) ======
+  const savedCharacters = JSON.parse(localStorage.getItem("characters") || "{}");
+  Object.entries(savedCharacters).forEach(([role, info]) => {
+    const contact = contacts.find(c => c.role === role);
+    if (contact) {
+      contact.name = info.name || contact.name;
+      contact.traits = info.traits || "";
+      contact.initial = info.name
+        ? info.name.split(" ").map(p => p[0]).join("").toUpperCase()
+        : contact.initial;
+    }
+  });
+
+  const managerSetup = savedCharacters["Manager"] || {
+    name: "Manager",
+    traits: "severo, aziendale"
   };
 
-  // ====== Stato & Variabili ======
+  // ====== Stato ======
   const tasks = [];
-  let currentLanguage = localStorage.getItem("lang") || "en";
-  let currentContact = null;
   let suspicionLevel = 0;
+  let currentContact = null;
+  let currentLanguage = localStorage.getItem("lang") || "en";
   let managerSessionId = null;
-
-  // ====== Inizializza sessione Manager ======
-  async function initManagerSession() {
-    try {
-      const res = await fetch("http://localhost:3000/api/manager/init", { method: "POST" });
-      const data = await res.json();
-      managerSessionId = data.sessionId;
-      console.log("Manager session avviata:", managerSessionId);
-    } catch (err) {
-      console.error("Errore init session:", err);
-    }
-  }
-
-  // ====== API layer ======
-  const API = {
-    async sendMessage(contactId, text) {
-      const contact = contacts.find(c => c.id === contactId);
-
-      // Mock per contatti non Manager
-      if (!contact || contact.role !== "Manager") {
-        const replyPool = [
-          "Got it, thanks!",
-          "I'll look into that.",
-          "Let me check and get back to you.",
-          "Sounds good!",
-          "Can you send me more details?",
-        ];
-        return {
-          reply: replyPool[Math.floor(Math.random() * replyPool.length)],
-          suspicionChange: 0
-        };
-      }
-
-      // Manager → chiama backend
-      try {
-        const res = await fetch("http://localhost:3000/api/manager/evaluate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: managerSessionId,
-            suspicion: suspicionLevel,
-            openTasks: tasks,
-            taskTitle: tasks.length > 0 ? tasks[tasks.length - 1].title : "nessun task",
-            playerMessage: text
-          })
-        });
-
-        const data = await res.json();
-        return {
-          reply: data.reply || "Errore nella risposta del Manager.",
-          suspicionChange: data.suspicionChange || 0,
-          taskStatus: data.taskStatus || "failed"
-        };
-      } catch (err) {
-        console.error("Errore fetch evaluate:", err);
-        return {
-          reply: "Non riesco a rispondere ora.",
-          suspicionChange: 0,
-          taskStatus: "failed"
-        };
-      }
-    }
-  };
 
   // ====== Cache DOM ======
   const contactsList = document.getElementById("contacts-list");
@@ -132,10 +74,6 @@
   const messageInput = document.getElementById("message-input");
   const sendButton = document.getElementById("send-button");
 
-  const languageToggle = document.getElementById("language-toggle");
-  const languageDropdown = document.getElementById("language-dropdown");
-  const currentLanguageSpan = document.getElementById("current-language");
-
   const suspicionLabel = document.getElementById("suspicion-label");
   const suspicionLevelSpan = document.getElementById("suspicion-level");
 
@@ -144,196 +82,146 @@
   const closeTasksBtn = document.getElementById("close-tasks-btn");
   const tasksTableBody = document.getElementById("tasks-table-body");
 
-  // ====== Render tasks ======
-  function renderTasks() {
-    tasksTableBody.innerHTML = "";
+  const currentLanguageSpan = document.getElementById("current-language");
+  const languageToggle = document.getElementById("language-toggle");
+  const languageDropdown = document.getElementById("language-dropdown");
 
-    if (tasks.length === 0) {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
-      tasksTableBody.appendChild(row);
-      return;
+  // ====== Messaggi demo ======
+  const sampleMessages = { 1: [] };
+
+  // ====== Init Manager ======
+  async function initManagerSession() {
+    try {
+      const res = await fetch("http://localhost:3000/api/manager/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(managerSetup)
+      });
+      const data = await res.json();
+      managerSessionId = data.sessionId;
+      console.log(" Manager session:", managerSessionId);
+    } catch (err) {
+      console.error("Errore init session:", err);
     }
-
-    tasks.forEach(task => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td class="p-2 border">${task.title}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
-        <td class="p-2 border">${task.status}</td>
-        <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
-      `;
-      tasksTableBody.appendChild(row);
-    });
   }
 
-  // ====== Render contacts ======
+  // ====== API Layer ======
+  const API = {
+    async sendMessage(contactId, text) {
+      const contact = contacts.find(c => c.id === contactId);
+
+      if (!contact || contact.role !== "Manager") {
+        const replyPool = [
+          "Got it, thanks!",
+          "I'll look into that.",
+          "Let me check and get back to you.",
+          "Sounds good!",
+          "Can you send me more details?",
+        ];
+        return { reply: replyPool[Math.floor(Math.random() * replyPool.length)], suspicionChange: 0 };
+      }
+
+      try {
+        const res = await fetch("http://localhost:3000/api/manager/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: managerSessionId,
+            suspicion: suspicionLevel,
+            openTasks: tasks,
+            taskTitle: tasks.length > 0 ? tasks[tasks.length - 1].title : "nessun task",
+            playerMessage: text
+          })
+        });
+        const data = await res.json();
+        return {
+          reply: data.reply || "Errore nella risposta del Manager.",
+          suspicionChange: data.suspicionChange || 0,
+          taskStatus: data.taskStatus || "failed"
+        };
+      } catch (err) {
+        console.error("Errore evaluate:", err);
+        return { reply: "Non riesco a rispondere ora.", suspicionChange: 0, taskStatus: "failed" };
+      }
+    }
+  };
+
+  // ====== Render ======
   function renderContacts() {
     contactsList.innerHTML = "";
-    contacts.forEach((contact) => {
+    contacts.forEach((c) => {
       const row = document.createElement("div");
-      row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
-        currentContact?.id === contact.id ? "bg-blue-50" : ""
-      }`;
-      row.dataset.id = contact.id;
+      row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${currentContact?.id === c.id ? "bg-blue-50" : ""}`;
+      row.dataset.id = c.id;
 
-      const initial = document.createElement("div");
-      initial.className = "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
-      initial.textContent = contact.initial;
-
-      const details = document.createElement("div");
-      details.className = "flex-1 min-w-0";
-
-      const name = document.createElement("h3");
-      name.className = "text-sm font-semibold text-gray-800 truncate";
-      name.textContent = contact.name;
-
-      const status = document.createElement("p");
-      status.className = "text-xs flex items-center";
-
-      const statusDot = document.createElement("span");
-      statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
-
-      const statusText = document.createElement("span");
-      statusText.className = "text-gray-500";
-      const statusKey = "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
-      statusText.textContent = translations[currentLanguage][statusKey];
-
-      status.appendChild(statusDot);
-      status.appendChild(statusText);
-      details.appendChild(name);
-      details.appendChild(status);
-
-      row.appendChild(initial);
-      row.appendChild(details);
+      row.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">${c.initial}</div>
+        <div class="flex-1 min-w-0">
+          <h3 class="text-sm font-semibold text-gray-800 truncate">${c.name}</h3>
+          <p class="text-xs text-gray-500"><span class="w-2 h-2 rounded-full inline-block mr-1 bg-green-500"></span>${c.role}</p>
+        </div>`;
       contactsList.appendChild(row);
     });
   }
 
-  // ====== Render messages ======
   function renderMessages() {
     messagesContainer.innerHTML = "";
     if (!currentContact) {
       noMessages.style.display = "flex";
       return;
     }
-
     const messages = sampleMessages[currentContact.id] || [];
-    if (messages.length === 0) {
+    if (!messages.length) {
       noMessages.style.display = "flex";
       return;
     }
-
     noMessages.style.display = "none";
     messages.forEach((m) => {
       const line = document.createElement("div");
       line.className = `flex ${m.sender === "user" ? "justify-end" : "justify-start"}`;
-
-      const bubble = document.createElement("div");
-      bubble.className = `max-w-xs px-4 py-2 ${m.sender === "user" ? "message-user" : "message-contact"}`;
-
-      const text = document.createElement("p");
-      text.className = "text-sm";
-      text.textContent = m.text;
-
-      const time = document.createElement("p");
-      time.className = "text-xs mt-1 text-right opacity-70";
-      time.textContent = m.time;
-
-      bubble.appendChild(text);
-      bubble.appendChild(time);
-      line.appendChild(bubble);
+      line.innerHTML = `<div class="max-w-xs px-4 py-2 ${m.sender === "user" ? "message-user" : "message-contact"}">
+        <p class="text-sm">${m.text}</p>
+        <p class="text-xs mt-1 text-right opacity-70">${m.time}</p>
+      </div>`;
       messagesContainer.appendChild(line);
     });
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // ====== Task Notifications ======
-  function updateTaskNotification() {
-    const count = tasks.filter(t => t.status === "assigned").length;
-    const badge = document.getElementById("open-tasks-count");
-    if (count > 0) {
-      badge.textContent = count;
-      badge.classList.remove("hidden");
-    } else {
-      badge.classList.add("hidden");
+  function renderTasks() {
+    tasksTableBody.innerHTML = "";
+    if (!tasks.length) {
+      tasksTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td></tr>`;
+      return;
     }
+    tasks.forEach(t => {
+      tasksTableBody.innerHTML += `
+        <tr>
+          <td class="p-2 border">${t.title}</td>
+          <td class="p-2 border">${contacts.find(c => c.id === t.assignedBy)?.name || "-"}</td>
+          <td class="p-2 border">${contacts.find(c => c.id === t.assignedTo)?.name || "-"}</td>
+          <td class="p-2 border">${t.status}</td>
+          <td class="p-2 border">${new Date(t.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
+        </tr>`;
+    });
   }
 
-  // ====== Manager Logic ======
-  function managerShouldAssignTask(managerId) {
-    const openTasks = tasks.filter(t => t.assignedTo === 99 && ["assigned", "in_progress"].includes(t.status));
-    if (openTasks.length >= 3) return false;
-    const urgentTask = openTasks.find(t => t.deadline - Date.now() < 2 * 60 * 1000);
-    if (urgentTask) return false;
-    if (Math.random() < 0.5) return false;
-    return true;
-  }
-
-  function generateTask(managerId) {
-    const taskTemplates = [
-      "Prepare Q1 financial report",
-      "Review code for ticket #342",
-      "Update project documentation",
-      "Create a test plan for module X",
-      "Investigate bug in system Y"
-    ];
-    const task = {
-      id: Date.now(),
-      title: taskTemplates[Math.floor(Math.random() * taskTemplates.length)],
-      assignedBy: managerId,
-      assignedTo: 99,
-      status: "assigned",
-      deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000
-    };
-    tasks.push(task);
-    return task;
-  }
-
-  // ====== Seleziona contatto ======
-  function selectContact(contactId) {
-    const next = contacts.find((c) => c.id === contactId);
-    if (!next) return;
-
-    currentContact = next;
-    noContactSelected.style.display = "none";
-    contactHeader.style.display = "flex";
-    contactInitial.textContent = currentContact.initial;
-    contactName.textContent = currentContact.name;
-
-    const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
-    contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
-
-    renderMessages();
-    renderContacts();
-  }
-
-  // ====== Invia messaggio ======
+  // ====== Messaging ======
   function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !currentContact) return;
 
-    const msg = {
-      text,
-      sender: "user",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-    if (!sampleMessages[currentContact.id]) sampleMessages[currentContact.id] = [];
+    const msg = { text, sender: "user", time: new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) };
+    sampleMessages[currentContact.id] = sampleMessages[currentContact.id] || [];
     sampleMessages[currentContact.id].push(msg);
     messageInput.value = "";
     renderMessages();
 
-    API.sendMessage(currentContact.id, text).then((res) => {
-      const reply = {
-        text: res.reply,
-        sender: "contact",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
+    API.sendMessage(currentContact.id, text).then(res => {
+      const reply = { text: res.reply, sender: "contact", time: new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) };
       sampleMessages[currentContact.id].push(reply);
       renderMessages();
-
-      updateSuspicion(suspicionLevel + res.suspicionChange);
+      suspicionLevel += res.suspicionChange;
+      suspicionLevelSpan.textContent = suspicionLevel + "%";
       if (res.taskStatus && tasks.length > 0) {
         tasks[tasks.length - 1].status = res.taskStatus;
         renderTasks();
@@ -341,123 +229,32 @@
     });
   }
 
-  // ====== Update suspicion ======
-  function updateSuspicion(newLevel) {
-    suspicionLevel = Math.max(0, Math.min(100, newLevel));
-    suspicionLevelSpan.textContent = `${suspicionLevel}%`;
-    if (suspicionLevel >= 70) {
-      suspicionLevelSpan.style.color = "#ef4444";
-    } else if (suspicionLevel >= 30) {
-      suspicionLevelSpan.style.color = "#f59e0b";
-    } else {
-      suspicionLevelSpan.style.color = "";
-    }
-  }
-
-  // ====== Cambio lingua ======
-  function changeLanguage(lang) {
-    currentLanguage = lang;
-    localStorage.setItem("lang", lang);
-    currentLanguageSpan.textContent = lang.toUpperCase();
-    updateUI();
-  }
-
-  function updateUI() {
-    document.getElementById("app-title").textContent = translations[currentLanguage].appTitle;
-    suspicionLabel.textContent = translations[currentLanguage].suspicionLabel;
-    document.getElementById("contacts-label").textContent = translations[currentLanguage].contactsLabel;
-    document.getElementById("no-contact-selected").textContent = translations[currentLanguage].selectContact;
-    document.getElementById("no-messages").textContent = translations[currentLanguage].noMessages;
-    messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
-
-    if (currentContact) {
-      const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
-      contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
-    }
-    renderContacts();
-  }
-
-  // ====== Eventi ======
-  function setupEventListeners() {
+  // ====== Events ======
+  function setupEvents() {
     sendButton.addEventListener("click", sendMessage);
-    messageInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
-    languageToggle.addEventListener("click", () => languageDropdown.classList.toggle("hidden"));
-
-    document.querySelectorAll("[data-lang]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        changeLanguage(btn.dataset.lang);
-        languageDropdown.classList.add("hidden");
-      });
-    });
-
-    document.addEventListener("click", (e) => {
-      if (!languageToggle.contains(e.target) && !languageDropdown.contains(e.target)) {
-        languageDropdown.classList.add("hidden");
-      }
-    });
-
-    contactsList.addEventListener("click", (e) => {
+    messageInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); sendMessage(); } });
+    contactsList.addEventListener("click", e => {
       const row = e.target.closest("[data-id]");
       if (!row) return;
-      selectContact(Number(row.dataset.id));
+      currentContact = contacts.find(c => c.id === Number(row.dataset.id));
+      contactHeader.style.display = "flex";
+      noContactSelected.style.display = "none";
+      contactInitial.textContent = currentContact.initial;
+      contactName.textContent = currentContact.name;
+      contactStatus.textContent = currentContact.role;
+      renderContacts();
+      renderMessages();
     });
-
-    openTasksBtn.addEventListener("click", () => {
-      renderTasks();
-      openTasksModal.classList.remove("hidden");
-    });
-
+    openTasksBtn.addEventListener("click", () => { renderTasks(); openTasksModal.classList.remove("hidden"); });
     closeTasksBtn.addEventListener("click", () => openTasksModal.classList.add("hidden"));
-    openTasksModal.addEventListener("click", (e) => { if (e.target === openTasksModal) openTasksModal.classList.add("hidden"); });
   }
 
   // ====== Init ======
   function initApp() {
-    currentLanguageSpan.textContent = currentLanguage.toUpperCase();
-    updateSuspicion(0);
     renderContacts();
-    setupEventListeners();
-    updateUI();
-    updateTaskNotification();
-
-    if (window.feather) feather.replace();
-    if (window.AOS) AOS.init();
-
-    initManagerSession(); // 🔥 Inizializza sessione Manager
+    setupEvents();
+    initManagerSession();
   }
 
   initApp();
-
-  // ====== Ciclo periodico per generare task ======
-  setInterval(() => {
-    const manager = contacts.find(c => c.role === "Manager");
-    if (!manager) return;
-
-    if (managerShouldAssignTask(manager.id)) {
-      const newTask = generateTask(manager.id);
-      sampleMessages[manager.id] = sampleMessages[manager.id] || [];
-      sampleMessages[manager.id].push({
-        text: `New task assigned: ${newTask.title}`,
-        sender: manager.name,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      });
-
-      if (currentContact && currentContact.id === manager.id) renderMessages();
-
-      updateTaskNotification();
-      const sound = document.getElementById("task-sound");
-      if (sound) {
-        sound.currentTime = 0;
-        sound.play();
-      }
-      console.log("New task created:", newTask);
-    }
-  }, 2 * 60 * 1000);
-
 })();

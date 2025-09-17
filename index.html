@@ -8,107 +8,103 @@
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
-
-      <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
-    <div class="flex flex-col h-full">
-        <!-- Header -->
-        <header class="bg-white shadow-sm py-4 px-6 flex justify-between items-center">
-            <h1 class="text-xl font-bold text-gray-800" id="app-title">Corporate Chat</h1>
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center">
-                    <span class="text-sm font-medium mr-2" id="suspicion-label">Suspicion:</span>
-                    <span class="text-sm font-bold" id="suspicion-level">0%</span>
-                </div>
-                <button id="open-tasks-btn" class="relative flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full text-sm font-medium">
-                    <span>Open Tasks</span>
-                    <span id="open-tasks-count" class="hidden absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5"></span>
+<div class="flex flex-col h-full">
+    <!-- Header -->
+    <header class="bg-white shadow-sm py-4 px-6 flex justify-between items-center">
+        <h1 class="text-xl font-bold text-gray-800" id="app-title">Corporate Chat</h1>
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center">
+                <span class="text-sm font-medium mr-2" id="suspicion-label">Suspicion:</span>
+                <span class="text-sm font-bold" id="suspicion-level">0%</span>
+            </div>
+            <button id="open-tasks-btn" class="relative flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full text-sm font-medium">
+                <span>Open Tasks</span>
+                <span id="open-tasks-count" class="hidden absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5"></span>
+            </button>
+            <div class="relative">
+                <button id="language-toggle" class="flex items-center space-x-1 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full text-sm font-medium">
+                    <span id="current-language">EN</span>
+                    <i data-feather="chevron-down" class="w-4 h-4"></i>
                 </button>
+                <div id="language-dropdown" class="hidden absolute right-0 mt-1 w-20 bg-white shadow-lg rounded-md z-10">
+                    <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" data-lang="en">English</button>
+                    <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" data-lang="it">Italiano</button>
+                </div>
+            </div>
+        </div>
+    </header>
 
-                <div class="relative">
-                    <button id="language-toggle" class="flex items-center space-x-1 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full text-sm font-medium">
-                        <span id="current-language">EN</span>
-                        <i data-feather="chevron-down" class="w-4 h-4"></i>
+    <!-- Main Content -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <div class="w-64 bg-white border-r border-gray-200 overflow-y-auto">
+            <div class="p-4">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4" id="contacts-label">Contacts</h2>
+                <div id="contacts-list" class="space-y-2">
+                    <!-- Contacts here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="flex-1 flex flex-col bg-gray-50">
+            <div id="chat-header" class="p-4 border-b border-gray-200 bg-white">
+                <h2 id="no-contact-selected" class="text-gray-500 italic">Select a contact to start chatting</h2>
+                <div id="contact-header" class="hidden flex items-center space-x-3">
+                    <div id="contact-initial" class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold"></div>
+                    <div>
+                        <h3 id="contact-name" class="font-semibold text-gray-800"></h3>
+                        <p id="contact-status" class="text-xs text-gray-500"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div id="no-messages" class="flex items-center justify-center h-full text-gray-500 italic">
+                    No messages yet
+                </div>
+            </div>
+
+            <!-- Message Input -->
+            <div class="p-4 border-t border-gray-200 bg-white">
+                <div class="flex items-center space-x-2">
+                    <input id="message-input" type="text" placeholder="Type a message..." class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="send-button" class="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <i data-feather="send" class="w-5 h-5"></i>
                     </button>
-                    <div id="language-dropdown" class="hidden absolute right-0 mt-1 w-20 bg-white shadow-lg rounded-md z-10">
-                        <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" data-lang="en">English</button>
-                        <button class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" data-lang="it">Italiano</button>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <div class="flex flex-1 overflow-hidden">
-            <!-- Sidebar -->
-            <div class="w-64 bg-white border-r border-gray-200 overflow-y-auto">
-                <div class="p-4">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-4" id="contacts-label">Contacts</h2>
-                    <div id="contacts-list" class="space-y-2">
-                        <!-- Contacts will be dynamically inserted here -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Chat Area -->
-            <div class="flex-1 flex flex-col bg-gray-50">
-                <div id="chat-header" class="p-4 border-b border-gray-200 bg-white">
-                    <h2 id="no-contact-selected" class="text-gray-500 italic">Select a contact to start chatting</h2>
-                    <div id="contact-header" class="hidden flex items-center space-x-3">
-                        <div id="contact-initial" class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold"></div>
-                        <div>
-                            <h3 id="contact-name" class="font-semibold text-gray-800"></h3>
-                            <p id="contact-status" class="text-xs text-gray-500"></p>
-                        </div>
-                    </div>
-                </div>
-
-                
-                <!-- Messages Container -->
-                <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4">
-                    <div id="no-messages" class="flex items-center justify-center h-full text-gray-500 italic">
-                        No messages yet
-                    </div>
-                    <!-- Messages will be dynamically inserted here -->
-                </div>
-                
-                <!-- Message Input -->
-                <div class="p-4 border-t border-gray-200 bg-white">
-                    <div class="flex items-center space-x-2">
-                        <input id="message-input" type="text" placeholder="Type a message..." class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <button id="send-button" class="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <i data-feather="send" class="w-5 h-5"></i>
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <!-- Open Tasks Modal -->
-    <div id="open-tasks-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="bg-white w-3/4 max-w-2xl rounded-lg shadow-lg p-6 overflow-y-auto max-h-[80vh]">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold">Open Tasks</h2>
-                <button id="close-tasks-btn" class="text-gray-500 hover:text-gray-700">&times;</button>
-            </div>
-            <table class="w-full border border-gray-200">
-                <thead>
-                <tr class="bg-gray-100 text-left">
-                    <th class="p-2 border">Task</th>
-                    <th class="p-2 border">Assigned By</th>
-                    <th class="p-2 border">Assigned To</th>
-                    <th class="p-2 border">Status</th>
-                    <th class="p-2 border">Deadline</th>
-                </tr>
-                </thead>
-                <tbody id="tasks-table-body">
-                <!-- Qui inseriremo i task -->
-                </tbody>
-            </table>
+</div>
+
+<!-- Open Tasks Modal -->
+<div id="open-tasks-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white w-3/4 max-w-2xl rounded-lg shadow-lg p-6 overflow-y-auto max-h-[80vh]">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Open Tasks</h2>
+            <button id="close-tasks-btn" class="text-gray-500 hover:text-gray-700">&times;</button>
         </div>
+        <table class="w-full border border-gray-200">
+            <thead>
+            <tr class="bg-gray-100 text-left">
+                <th class="p-2 border">Task</th>
+                <th class="p-2 border">Assigned By</th>
+                <th class="p-2 border">Assigned To</th>
+                <th class="p-2 border">Status</th>
+                <th class="p-2 border">Deadline</th>
+            </tr>
+            </thead>
+            <tbody id="tasks-table-body"></tbody>
+        </table>
     </div>
-   <script src="js/app.js"></script>
-    <audio id="task-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+</div>
+
+<script src="js/app.js"></script>
+<audio id="task-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 </body>
 </html>
