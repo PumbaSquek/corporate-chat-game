@@ -7,6 +7,9 @@
   const PLAYER_ID = 99;
   const FALLBACK_TASK_TITLE = "Task di fallback";
 
+  // ====== Stato Giorni ======
+  let currentDay = 1;
+
   // ====== Traduzioni ======
   const translations = {
     en: {
@@ -42,7 +45,7 @@
     { id: PLAYER_ID, role: "Analyst", status: "online", initial: "Y", name: "You" }
   ];
 
-  // ====== Override da Setup (se presenti) ======
+  // ====== Override da Setup ======
   const savedCharacters = JSON.parse(localStorage.getItem("characters") || "{}");
   Object.entries(savedCharacters).forEach(([role, info]) => {
     const contact = contacts.find(c => c.role === role);
@@ -66,7 +69,7 @@
   let currentContact = null;
   let suspicionLevel = 0;
   let managerSessionId = null;
-  let taskInterval = null;
+  let dayInterval = null;
 
   // Inizializza messaggi vuoti per ogni contatto
   const sampleMessages = contacts.reduce((acc, c) => {
@@ -98,6 +101,21 @@
   const currentLanguageSpan = document.getElementById("current-language");
   const requestTaskBtn = document.getElementById("request-task-btn");
 
+  // 🔹 Popup riepilogo giornaliero
+  const dailyModal = document.createElement("div");
+  dailyModal.id = "daily-modal";
+  dailyModal.className = "fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50";
+  dailyModal.innerHTML = `
+    <div class="bg-white w-3/4 max-w-lg rounded-lg shadow-lg p-6 animate__animated animate__fadeInDown">
+      <h2 class="text-lg font-semibold mb-4">Riepilogo Giornaliero <span id="day-label"></span></h2>
+      <div id="daily-tasks" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
+      <div class="flex justify-end mt-4">
+        <button id="close-daily-btn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Chiudi</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dailyModal);
+
   // ====== Init Manager Session ======
   async function initManagerSession() {
     try {
@@ -118,8 +136,6 @@
   const API = {
     async sendMessage(contactId, text) {
       const contact = contacts.find(c => c.id === contactId);
-
-      // 🔹 Se non è il Manager → messaggio fisso
       if (!contact || contact.role !== "Manager") {
         return {
           reply: "Scrivi al Manager, ancora mi devi sviluppare...",
@@ -127,8 +143,6 @@
           taskStatus: null
         };
       }
-
-      // 🔹 Altrimenti gestito dal backend
       try {
         const res = await fetch(`${apiBaseUrl}/api/manager/evaluate`, {
           method: "POST",
@@ -154,39 +168,104 @@
     }
   };
 
+
   // ====== Genera Task ======
-  async function generateTask(managerId) {
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
-      });
-      const data = await res.json();
-      const task = {
-        id: Date.now(),
-        title: data.title,
-        assignedBy: managerId,
-        assignedTo: PLAYER_ID,
-        status: "assigned",
-        deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000
-      };
-      tasks.push(task);
-      return task;
-    } catch (err) {
-      console.error("Errore generazione task:", err);
-      const task = {
-        id: Date.now(),
-        title: FALLBACK_TASK_TITLE,
-        assignedBy: managerId,
-        assignedTo: PLAYER_ID,
-        status: "assigned",
-        deadline: Date.now() + 5 * 60 * 1000
-      };
-      tasks.push(task);
-      return task;
+async function generateTask(managerId) {
+  try {
+    const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
+    });
+    const data = await res.json();
+
+ const task = {
+   id: Date.now(),
+   title: data.title,
+   assignedBy: managerId,
+   assignedTo: PLAYER_ID,
+   status: "assigned",
+   // 1..3 giorni direttamente
+   deadlineDay: currentDay + (Math.floor(Math.random() * 3) + 1)
+ };
+ tasks.push(task);
+ return task;
+
+    // Normalizzazione legacy (solo se arriva ancora "deadline" vecchio)
+    if (!task.deadlineDay && task.deadline) {
+      const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
+      task.deadlineDay = currentDay + Math.max(1, daysFromNow);
+      delete task.deadline;
+    }
+
+    console.log('[generateTask][TRY] currentDay=%d deltaDays=%d deadlineDay=%d',
+      currentDay, deltaDays, task.deadlineDay);
+
+    tasks.push(task);
+    return task;
+
+  } catch (err) {
+    console.error("Errore generazione task:", err);
+
+    const deltaDays = Math.floor(Math.random() * 3) + 1; // 1..3 anche nel fallback
+  const task = {
+    id: Date.now(),
+    title: FALLBACK_TASK_TITLE,
+    assignedBy: managerId,
+    assignedTo: PLAYER_ID,
+    status: "assigned",
+    // 1..3 giorni direttamente anche nel fallback
+    deadlineDay: currentDay + (Math.floor(Math.random() * 3) + 1)
+  };
+  tasks.push(task);
+  return task;
+    }
+}
+
+
+  // ====== Giorno Corrente ======
+  function updateDayLabel() {
+    const dayLabel = document.getElementById("day-label");
+    if (dayLabel) {
+      dayLabel.textContent = `(Giorno ${currentDay})`;
     }
   }
+
+  // ====== Mostra riepilogo giornaliero ======
+function showDailySummary() {
+  const dailyTasksDiv = document.getElementById("daily-tasks");
+  dailyTasksDiv.innerHTML = "";
+
+  if (tasks.length === 0) {
+    dailyTasksDiv.innerHTML = `<p class="text-gray-500 italic">Nessun task oggi.</p>`;
+  } else {
+    tasks.forEach(task => {
+      // 🔹 Normalizza se esiste ancora un campo "deadline"
+      if (!task.deadlineDay && task.deadline) {
+        const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
+        task.deadlineDay = currentDay + Math.max(1, daysFromNow);
+        delete task.deadline;
+      }
+
+      const label = task.deadlineDay > currentDay
+        ? `Giorno ${task.deadlineDay}`
+        : `Scaduto`;
+
+      const div = document.createElement("div");
+      div.className = "p-2 border rounded bg-gray-50";
+      div.innerHTML = `
+        <strong>${task.title}</strong><br>
+        Stato: ${task.status}<br>
+        Deadline: ${label}
+      `;
+      dailyTasksDiv.appendChild(div);
+    });
+  }
+
+  updateDayLabel();
+  dailyModal.classList.remove("hidden");
+}
+
 
   // ====== Render Contacts ======
   function renderContacts() {
@@ -198,7 +277,6 @@
         currentContact?.id === c.id ? "bg-blue-50" : ""
       }`;
       row.dataset.id = c.id;
-
       row.innerHTML = `
         <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">${c.initial}</div>
         <div class="flex-1 min-w-0">
@@ -213,6 +291,7 @@
           </p>
         </div>`;
       contactsList.appendChild(row);
+      row.addEventListener("click", () => selectContact(c.id));
     });
   }
 
@@ -252,7 +331,7 @@
                                      suspicionLevel >= 30 ? "#f59e0b" : "";
   }
 
-  // ====== Aggiorna badge dei task ======
+  // ====== Badge Task ======
   function updateTaskBadge() {
     const badge = document.getElementById("open-tasks-count");
     const count = tasks.filter(t => t.status === "assigned").length;
@@ -264,87 +343,49 @@
     }
   }
 
-  // ====== Eventi ======
-  function setupEventListeners() {
-    sendButton.addEventListener("click", sendMessage);
-    messageInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendMessage(); } });
-    contactsList.addEventListener("click", (e) => {
-      const row = e.target.closest("[data-id]");
-      if (!row) return;
-      selectContact(Number(row.dataset.id));
-    });
-
-    closeTasksBtn.addEventListener("click", () => openTasksModal.classList.add("hidden"));
-    openTasksBtn.addEventListener("click", () => {
-      renderTasks();
-      openTasksModal.classList.remove("hidden");
-    });
-
-    requestTaskBtn.addEventListener("click", () => {
-      const manager = contacts.find(c => c.role === "Manager");
-      if (!manager) return;
-      if (taskInterval) clearInterval(taskInterval);
-      taskInterval = startTaskLoop();
-
-      generateTask(manager.id).then((newTask) => {
-        sampleMessages[manager.id].push({
-          text: `New task assigned: ${newTask.title}`,
-          sender: manager.name,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        });
-        if (currentContact && currentContact.id === manager.id) renderMessages();
-        renderTasks();
-        updateTaskBadge();
-
-        const sound = document.getElementById("task-sound");
-        if (sound) {
-          sound.currentTime = 0;
-          sound.play();
-        }
-      });
-    });
-
-    document.getElementById("menu-btn").addEventListener("click", () => {
-      localStorage.setItem("gameState", "in_progress");
-      window.location.href = "setup.html";
-    });
-
-    // 🔹 Chiudi interval al refresh
-    window.addEventListener("beforeunload", () => {
-      if (taskInterval) clearInterval(taskInterval);
-    });
-  }
-
-  // ====== Render Tasks ======
-  function renderTasks() {
-    tasksTableBody.innerHTML = "";
-    if (tasks.length === 0) {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
-      tasksTableBody.appendChild(row);
-      updateTaskBadge();
-      return;
-    }
-    tasks.forEach(task => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td class="p-2 border">${task.title}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
-        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
-        <td class="p-2 border">${task.status}</td>
-        <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
-        <td class="p-2 border">
-          <button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>
-          <button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>
-          <button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>
-        </td>
-      `;
-      tasksTableBody.appendChild(row);
-    });
+// ====== Render Tasks ======
+function renderTasks() {
+  tasksTableBody.innerHTML = "";
+  if (tasks.length === 0) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
+    tasksTableBody.appendChild(row);
     updateTaskBadge();
+    return;
   }
 
-  // ====== Gestione azioni sui task ======
+  tasks.forEach(task => {
+    // 🔹 Normalizza se esiste ancora un campo "deadline"
+    if (!task.deadlineDay && task.deadline) {
+      const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
+      task.deadlineDay = currentDay + Math.max(1, daysFromNow);
+      delete task.deadline;
+    }
+
+    const deadlineLabel = task.deadlineDay > currentDay
+      ? `Giorno ${task.deadlineDay}`
+      : `Scaduto`;
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="p-2 border">${task.title}</td>
+      <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
+      <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
+      <td class="p-2 border">${task.status}</td>
+      <td class="p-2 border">${deadlineLabel}</td>
+      <td class="p-2 border">
+        <button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>
+        <button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>
+        <button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>
+      </td>
+    `;
+    tasksTableBody.appendChild(row);
+  });
+
+  updateTaskBadge();
+}
+
+  // ====== Gestione azioni task ======
   tasksTableBody.addEventListener("click", (e) => {
     const taskId = Number(e.target.dataset.id);
     const task = tasks.find(t => t.id === taskId);
@@ -359,17 +400,14 @@
     if (e.target.classList.contains("delegate-task-btn")) {
       const colleagues = contacts.filter(c => c.id !== PLAYER_ID && c.role !== "Manager");
       if (colleagues.length === 0) return alert("Nessun collega disponibile!");
-
       const chosen = colleagues[Math.floor(Math.random() * colleagues.length)];
       task.status = "delegated";
       task.assignedTo = chosen.id;
-
       sampleMessages[chosen.id].push({
         text: `Ti è stato delegato: ${task.title}`,
         sender: "system",
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       });
-
       renderTasks();
     }
 
@@ -415,12 +453,40 @@
     });
   }
 
-  // ====== Ciclo Task ======
-  function startTaskLoop() {
+  // ====== Loop Giorni ======
+  function startDayLoop() {
     return setInterval(() => {
+      currentDay++;
+      updateDayLabel();
+      showDailySummary();
       const manager = contacts.find(c => c.role === "Manager");
       if (!manager) return;
-      if (tasks.filter(t => t.assignedTo === PLAYER_ID && ["assigned","in_progress"].includes(t.status)).length >= 3) return;
+      generateTask(manager.id).then((newTask) => {
+        sampleMessages[manager.id].push({
+          text: `Nuovo task assegnato: ${newTask.title}`,
+          sender: manager.name,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        });
+        if (currentContact && currentContact.id === manager.id) renderMessages();
+        renderTasks();
+      });
+    }, 5 * 60 * 1000); // 5 min = 1 giorno
+  }
+
+  // ====== Eventi ======
+  function setupEventListeners() {
+    sendButton.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendMessage(); } });
+
+    closeTasksBtn.addEventListener("click", () => openTasksModal.classList.add("hidden"));
+    openTasksBtn.addEventListener("click", () => {
+      renderTasks();
+      openTasksModal.classList.remove("hidden");
+    });
+
+    requestTaskBtn.addEventListener("click", () => {
+      const manager = contacts.find(c => c.role === "Manager");
+      if (!manager) return;
       generateTask(manager.id).then((newTask) => {
         sampleMessages[manager.id].push({
           text: `New task assigned: ${newTask.title}`,
@@ -429,14 +495,18 @@
         });
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
-
-        const sound = document.getElementById("task-sound");
-        if (sound) {
-          sound.currentTime = 0;
-          sound.play();
-        }
+        updateTaskBadge();
       });
-    }, 2 * 60 * 1000);
+    });
+
+    document.getElementById("menu-btn").addEventListener("click", () => {
+      localStorage.setItem("gameState", "in_progress");
+      window.location.href = "setup.html";
+    });
+
+    document.getElementById("close-daily-btn").addEventListener("click", () => {
+      dailyModal.classList.add("hidden");
+    });
   }
 
   // ====== Init ======
@@ -446,8 +516,9 @@
     renderContacts();
     setupEventListeners();
     initManagerSession();
-    if (taskInterval) clearInterval(taskInterval);
-    taskInterval = startTaskLoop();
+    if (dayInterval) clearInterval(dayInterval);
+    dayInterval = startDayLoop();
+    updateDayLabel();
   }
 
   initApp();
