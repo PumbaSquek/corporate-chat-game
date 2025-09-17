@@ -1,27 +1,7 @@
 // js/app.js
 (() => {
 
-const managerInitPrompt = {
-  role: "system",
-  content: `
-Sei un severo Manager aziendale nel gioco Corporate Chat.
-Regole:
-- Rispondi sempre in italiano, con tono aziendale, breve e diretto.
-- Assegni task all'Analyst (il giocatore).
-- Valuti le scuse, i tentativi di delega o risposte vaghe.
-- Aumenti il sospetto se il giocatore evita i compiti troppe volte.
-- Rispondi sempre in formato JSON con i campi:
-{
-  "suspicionChange": <numero>,
-  "taskStatus": "<delegated|in_progress|failed>",
-  "reply": "<messaggio breve e aziendale in italiano>"
-}
-`
-};
-
-contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
-
-  // ====== State & Data ======
+  // ====== Traduzioni ======
   const translations = {
     en: {
       appTitle: "Corporate Chat",
@@ -47,7 +27,7 @@ contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
     },
   };
 
-  // Demo contacts (con ruoli)
+  // ====== Contatti demo ======
   const contacts = [
     { id: 1, name: "Francesco Viola", initial: "FV", role: "Manager", status: "online", rapport: 50, busyLevel: 20, suspicionWeight: 2, memory: [] },
     { id: 2, name: "Giuseppe Origlia", initial: "GO", role: "Associate Manager", status: "away", rapport: 40, busyLevel: 30 },
@@ -57,10 +37,9 @@ contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
     { id: 6, name: "Marco Esposito", initial: "ME", role: "Associate", status: "online", rapport: 25, busyLevel: 20 },
     { id: 7, name: "Elena Russo", initial: "ER", role: "Associate", status: "offline", rapport: 25, busyLevel: 40 },
     { id: 99, name: "You", initial: "Y", role: "Analyst", status: "online" }
-
   ];
 
-  // Demo messages
+  // ====== Messaggi demo ======
   const sampleMessages = {
     1: [
       { text: "Hi there! How are you?", sender: "contact", time: "10:30 AM" },
@@ -69,39 +48,77 @@ contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
     ]
   };
 
-  // ====== Tasks (inizialmente vuoti) ======
+  // ====== Stato & Variabili ======
   const tasks = [];
-
-
-  // ====== API layer (mock) ======
-  const API = {
-    async getContacts() {
-      return contacts;
-    },
-    async getMessages(contactId) {
-      return sampleMessages[contactId] || [];
-    },
-    async sendMessage(contactId, text) {
-      const replyPool = [
-        "Got it, thanks!",
-        "I'll look into that.",
-        "Let me check and get back to you.",
-        "Sounds good!",
-        "Can you send me more details?",
-      ];
-      return {
-        reply: replyPool[Math.floor(Math.random() * replyPool.length)],
-        suspicion: Math.min(100, suspicionLevel + 5),
-      };
-    },
-  };
-
-  // ====== App state ======
   let currentLanguage = localStorage.getItem("lang") || "en";
   let currentContact = null;
   let suspicionLevel = 0;
+  let managerSessionId = null;
 
-  // ====== DOM Cache ======
+  // ====== Inizializza sessione Manager ======
+  async function initManagerSession() {
+    try {
+      const res = await fetch("http://localhost:3000/api/manager/init", { method: "POST" });
+      const data = await res.json();
+      managerSessionId = data.sessionId;
+      console.log("Manager session avviata:", managerSessionId);
+    } catch (err) {
+      console.error("Errore init session:", err);
+    }
+  }
+
+  // ====== API layer ======
+  const API = {
+    async sendMessage(contactId, text) {
+      const contact = contacts.find(c => c.id === contactId);
+
+      // Mock per contatti non Manager
+      if (!contact || contact.role !== "Manager") {
+        const replyPool = [
+          "Got it, thanks!",
+          "I'll look into that.",
+          "Let me check and get back to you.",
+          "Sounds good!",
+          "Can you send me more details?",
+        ];
+        return {
+          reply: replyPool[Math.floor(Math.random() * replyPool.length)],
+          suspicionChange: 0
+        };
+      }
+
+      // Manager → chiama backend
+      try {
+        const res = await fetch("http://localhost:3000/api/manager/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: managerSessionId,
+            suspicion: suspicionLevel,
+            openTasks: tasks,
+            taskTitle: tasks.length > 0 ? tasks[tasks.length - 1].title : "nessun task",
+            playerMessage: text
+          })
+        });
+
+        const data = await res.json();
+        return {
+          reply: data.reply || "Errore nella risposta del Manager.",
+          suspicionChange: data.suspicionChange || 0,
+          taskStatus: data.taskStatus || "failed"
+        };
+      } catch (err) {
+        console.error("Errore fetch evaluate:", err);
+        return {
+          reply: "Non riesco a rispondere ora.",
+          suspicionChange: 0,
+          taskStatus: "failed"
+        };
+      }
+    }
+  };
+
+  // ====== Cache DOM ======
   const contactsList = document.getElementById("contacts-list");
   const noContactSelected = document.getElementById("no-contact-selected");
   const contactHeader = document.getElementById("contact-header");
@@ -122,7 +139,6 @@ contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
   const suspicionLabel = document.getElementById("suspicion-label");
   const suspicionLevelSpan = document.getElementById("suspicion-level");
 
-  // ====== DOM for tasks modal ======
   const openTasksBtn = document.getElementById("open-tasks-btn");
   const openTasksModal = document.getElementById("open-tasks-modal");
   const closeTasksBtn = document.getElementById("close-tasks-btn");
@@ -152,58 +168,52 @@ contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
     });
   }
 
-  // ====== Rendering contacts ======
-function renderContacts() {
-  contactsList.innerHTML = "";
+  // ====== Render contacts ======
+  function renderContacts() {
+    contactsList.innerHTML = "";
+    contacts.forEach((contact) => {
+      const row = document.createElement("div");
+      row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
+        currentContact?.id === contact.id ? "bg-blue-50" : ""
+      }`;
+      row.dataset.id = contact.id;
 
-  contacts.forEach((contact) => {
-    const row = document.createElement("div");
-    row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
-      currentContact?.id === contact.id ? "bg-blue-50" : ""
-    }`;
-    row.dataset.id = contact.id;
+      const initial = document.createElement("div");
+      initial.className = "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
+      initial.textContent = contact.initial;
 
-    const initial = document.createElement("div");
-    initial.className =
-      "w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold";
-    initial.textContent = contact.initial;
+      const details = document.createElement("div");
+      details.className = "flex-1 min-w-0";
 
-    const details = document.createElement("div");
-    details.className = "flex-1 min-w-0";
+      const name = document.createElement("h3");
+      name.className = "text-sm font-semibold text-gray-800 truncate";
+      name.textContent = contact.name;
 
-    const name = document.createElement("h3");
-    name.className = "text-sm font-semibold text-gray-800 truncate";
-    name.textContent = contact.name;
+      const status = document.createElement("p");
+      status.className = "text-xs flex items-center";
 
-    const status = document.createElement("p");
-    status.className = "text-xs flex items-center";
+      const statusDot = document.createElement("span");
+      statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
 
-    const statusDot = document.createElement("span");
-    statusDot.className = `w-2 h-2 rounded-full mr-1 status-${contact.status}`;
+      const statusText = document.createElement("span");
+      statusText.className = "text-gray-500";
+      const statusKey = "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
+      statusText.textContent = translations[currentLanguage][statusKey];
 
-    const statusText = document.createElement("span");
-    statusText.className = "text-gray-500";
-    const statusKey =
-      "status" + contact.status.charAt(0).toUpperCase() + contact.status.slice(1);
-    statusText.textContent = translations[currentLanguage][statusKey];
+      status.appendChild(statusDot);
+      status.appendChild(statusText);
+      details.appendChild(name);
+      details.appendChild(status);
 
-    status.appendChild(statusDot);
-    status.appendChild(statusText);
+      row.appendChild(initial);
+      row.appendChild(details);
+      contactsList.appendChild(row);
+    });
+  }
 
-    details.appendChild(name);
-    details.appendChild(status);
-
-    row.appendChild(initial);
-    row.appendChild(details);
-
-    contactsList.appendChild(row);
-  });
-}
-
-  // ====== Rendering messages ======
+  // ====== Render messages ======
   function renderMessages() {
     messagesContainer.innerHTML = "";
-
     if (!currentContact) {
       noMessages.style.display = "flex";
       return;
@@ -216,7 +226,6 @@ function renderContacts() {
     }
 
     noMessages.style.display = "none";
-
     messages.forEach((m) => {
       const line = document.createElement("div");
       line.className = `flex ${m.sender === "user" ? "justify-end" : "justify-start"}`;
@@ -237,7 +246,6 @@ function renderContacts() {
       line.appendChild(bubble);
       messagesContainer.appendChild(line);
     });
-
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
@@ -245,7 +253,6 @@ function renderContacts() {
   function updateTaskNotification() {
     const count = tasks.filter(t => t.status === "assigned").length;
     const badge = document.getElementById("open-tasks-count");
-
     if (count > 0) {
       badge.textContent = count;
       badge.classList.remove("hidden");
@@ -256,20 +263,11 @@ function renderContacts() {
 
   // ====== Manager Logic ======
   function managerShouldAssignTask(managerId) {
-    // Conta i task aperti del player
-    const openTasks = tasks.filter(
-      t => t.assignedTo === 99 && ["assigned", "in_progress"].includes(t.status)
-    );
-
-    if (openTasks.length >= 3) return false; // già troppo lavoro
-
-    // Se un task scade entro 2 minuti → aspetta
+    const openTasks = tasks.filter(t => t.assignedTo === 99 && ["assigned", "in_progress"].includes(t.status));
+    if (openTasks.length >= 3) return false;
     const urgentTask = openTasks.find(t => t.deadline - Date.now() < 2 * 60 * 1000);
     if (urgentTask) return false;
-
-    // Random factor → non sempre assegna
     if (Math.random() < 0.5) return false;
-
     return true;
   }
 
@@ -281,41 +279,37 @@ function renderContacts() {
       "Create a test plan for module X",
       "Investigate bug in system Y"
     ];
-
     const task = {
       id: Date.now(),
       title: taskTemplates[Math.floor(Math.random() * taskTemplates.length)],
       assignedBy: managerId,
-      assignedTo: 99, // il giocatore
+      assignedTo: 99,
       status: "assigned",
-      deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000 // 3–7 min
+      deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000
     };
-
     tasks.push(task);
     return task;
   }
 
-  // ====== Logic ======
-function selectContact(contactId) {
-  const next = contacts.find((c) => c.id === contactId);
-  if (!next) return;
+  // ====== Seleziona contatto ======
+  function selectContact(contactId) {
+    const next = contacts.find((c) => c.id === contactId);
+    if (!next) return;
 
-  currentContact = next;
+    currentContact = next;
+    noContactSelected.style.display = "none";
+    contactHeader.style.display = "flex";
+    contactInitial.textContent = currentContact.initial;
+    contactName.textContent = currentContact.name;
 
-  noContactSelected.style.display = "none";
-  contactHeader.style.display = "flex";
-  contactInitial.textContent = currentContact.initial;
-  contactName.textContent = currentContact.name;
+    const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
+    contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
 
-  // Mostra ruolo sotto al nome
-  contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][
-    "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1)
-  ]}`;
+    renderMessages();
+    renderContacts();
+  }
 
-  renderMessages();
-  renderContacts();
-}
-
+  // ====== Invia messaggio ======
   function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !currentContact) return;
@@ -330,7 +324,6 @@ function selectContact(contactId) {
     messageInput.value = "";
     renderMessages();
 
-    // Simula risposta via API mock
     API.sendMessage(currentContact.id, text).then((res) => {
       const reply = {
         text: res.reply,
@@ -339,23 +332,29 @@ function selectContact(contactId) {
       };
       sampleMessages[currentContact.id].push(reply);
       renderMessages();
-      updateSuspicion(res.suspicion);
+
+      updateSuspicion(suspicionLevel + res.suspicionChange);
+      if (res.taskStatus && tasks.length > 0) {
+        tasks[tasks.length - 1].status = res.taskStatus;
+        renderTasks();
+      }
     });
   }
 
+  // ====== Update suspicion ======
   function updateSuspicion(newLevel) {
-    suspicionLevel = newLevel;
+    suspicionLevel = Math.max(0, Math.min(100, newLevel));
     suspicionLevelSpan.textContent = `${suspicionLevel}%`;
-
     if (suspicionLevel >= 70) {
-      suspicionLevelSpan.style.color = "#ef4444"; // red-500
+      suspicionLevelSpan.style.color = "#ef4444";
     } else if (suspicionLevel >= 30) {
-      suspicionLevelSpan.style.color = "#f59e0b"; // amber-500
+      suspicionLevelSpan.style.color = "#f59e0b";
     } else {
-      suspicionLevelSpan.style.color = ""; // default
+      suspicionLevelSpan.style.color = "";
     }
   }
 
+  // ====== Cambio lingua ======
   function changeLanguage(lang) {
     currentLanguage = lang;
     localStorage.setItem("lang", lang);
@@ -371,18 +370,14 @@ function selectContact(contactId) {
     document.getElementById("no-messages").textContent = translations[currentLanguage].noMessages;
     messageInput.placeholder = translations[currentLanguage].inputPlaceholder;
 
-   if (currentContact) {
-       const statusKey =
-         "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
-       contactStatus.textContent =
-         `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
-     }
-
-
+    if (currentContact) {
+      const statusKey = "status" + currentContact.status.charAt(0).toUpperCase() + currentContact.status.slice(1);
+      contactStatus.textContent = `${currentContact.role} • ${translations[currentLanguage][statusKey]}`;
+    }
     renderContacts();
   }
 
-  // ====== Events ======
+  // ====== Eventi ======
   function setupEventListeners() {
     sendButton.addEventListener("click", sendMessage);
     messageInput.addEventListener("keydown", (e) => {
@@ -392,9 +387,7 @@ function selectContact(contactId) {
       }
     });
 
-    languageToggle.addEventListener("click", () => {
-      languageDropdown.classList.toggle("hidden");
-    });
+    languageToggle.addEventListener("click", () => languageDropdown.classList.toggle("hidden"));
 
     document.querySelectorAll("[data-lang]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -412,71 +405,59 @@ function selectContact(contactId) {
     contactsList.addEventListener("click", (e) => {
       const row = e.target.closest("[data-id]");
       if (!row) return;
-      const id = Number(row.dataset.id);
-      selectContact(id);
+      selectContact(Number(row.dataset.id));
     });
 
-    // Open Tasks modal
     openTasksBtn.addEventListener("click", () => {
       renderTasks();
       openTasksModal.classList.remove("hidden");
     });
 
-    closeTasksBtn.addEventListener("click", () => {
-      openTasksModal.classList.add("hidden");
-    });
-
-    openTasksModal.addEventListener("click", (e) => {
-      if (e.target === openTasksModal) openTasksModal.classList.add("hidden");
-    });
+    closeTasksBtn.addEventListener("click", () => openTasksModal.classList.add("hidden"));
+    openTasksModal.addEventListener("click", (e) => { if (e.target === openTasksModal) openTasksModal.classList.add("hidden"); });
   }
 
   // ====== Init ======
   function initApp() {
     currentLanguageSpan.textContent = currentLanguage.toUpperCase();
     updateSuspicion(0);
-
     renderContacts();
     setupEventListeners();
     updateUI();
-
     updateTaskNotification();
 
     if (window.feather) feather.replace();
     if (window.AOS) AOS.init();
+
+    initManagerSession(); // 🔥 Inizializza sessione Manager
   }
 
   initApp();
 
   // ====== Ciclo periodico per generare task ======
-setInterval(() => {
-  const manager = contacts.find(c => c.role === "Manager");
-  if (!manager) return;
+  setInterval(() => {
+    const manager = contacts.find(c => c.role === "Manager");
+    if (!manager) return;
 
-  if (managerShouldAssignTask(manager.id)) {
-    const newTask = generateTask(manager.id);
+    if (managerShouldAssignTask(manager.id)) {
+      const newTask = generateTask(manager.id);
+      sampleMessages[manager.id] = sampleMessages[manager.id] || [];
+      sampleMessages[manager.id].push({
+        text: `New task assigned: ${newTask.title}`,
+        sender: manager.name,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
 
-    // Notifica in chat
-    sampleMessages[manager.id] = sampleMessages[manager.id] || [];
-    sampleMessages[manager.id].push({
-      text: `New task assigned: ${newTask.title}`,
-      sender: manager.name,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    });
+      if (currentContact && currentContact.id === manager.id) renderMessages();
 
-    if (currentContact && currentContact.id === manager.id) {
-      renderMessages();
+      updateTaskNotification();
+      const sound = document.getElementById("task-sound");
+      if (sound) {
+        sound.currentTime = 0;
+        sound.play();
+      }
+      console.log("New task created:", newTask);
     }
+  }, 2 * 60 * 1000);
 
-    // === NEW: aggiorna badge + suona beep ===
-    updateTaskNotification();
-    const sound = document.getElementById("task-sound");
-    if (sound) {
-      sound.currentTime = 0;
-      sound.play();
-    }
-
-    console.log("New task created:", newTask);
-  }
-}, 2 * 60 * 1000);
 })();
