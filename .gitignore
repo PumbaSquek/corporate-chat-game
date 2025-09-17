@@ -1,0 +1,16 @@
+# Ignora file di configurazione sensibili
+server/.env
+
+# Node modules (quando farai npm install sulla Raspberry o sul tuo PC)
+node_modules/
+
+# File di log
+*.log
+
+# Cartelle di IntelliJ / JetBrains
+.idea/
+out/
+
+# Mac e Windows file spazzatura
+.DS_Store
+Thumbs.db

@@ -1,5 +1,26 @@
 // js/app.js
 (() => {
+
+const managerInitPrompt = {
+  role: "system",
+  content: `
+Sei un severo Manager aziendale nel gioco Corporate Chat.
+Regole:
+- Rispondi sempre in italiano, con tono aziendale, breve e diretto.
+- Assegni task all'Analyst (il giocatore).
+- Valuti le scuse, i tentativi di delega o risposte vaghe.
+- Aumenti il sospetto se il giocatore evita i compiti troppe volte.
+- Rispondi sempre in formato JSON con i campi:
+{
+  "suspicionChange": <numero>,
+  "taskStatus": "<delegated|in_progress|failed>",
+  "reply": "<messaggio breve e aziendale in italiano>"
+}
+`
+};
+
+contacts.find(c => c.role === "Manager").memory.push(managerInitPrompt);
+
   // ====== State & Data ======
   const translations = {
     en: {
@@ -28,7 +49,7 @@
 
   // Demo contacts (con ruoli)
   const contacts = [
-    { id: 1, name: "Francesco Viola", initial: "FV", role: "Manager", status: "online", rapport: 50, busyLevel: 20 },
+    { id: 1, name: "Francesco Viola", initial: "FV", role: "Manager", status: "online", rapport: 50, busyLevel: 20, suspicionWeight: 2, memory: [] },
     { id: 2, name: "Giuseppe Origlia", initial: "GO", role: "Associate Manager", status: "away", rapport: 40, busyLevel: 30 },
     { id: 3, name: "Luciano Rinaldi", initial: "LR", role: "Associate Manager", status: "offline", rapport: 35, busyLevel: 60 },
     { id: 4, name: "Sebastiano Fotia", initial: "SF", role: "Senior", status: "online", rapport: 45, busyLevel: 50 },
