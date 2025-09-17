@@ -11,26 +11,45 @@
 <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-2xl">
     <h1 class="text-2xl font-bold text-center mb-6">Setup Gioco</h1>
 
-    <div class="mb-6">
-        <label for="role-select" class="block text-sm font-medium text-gray-700 mb-2">Seleziona un ruolo</label>
-        <select id="role-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value="">-- Seleziona un ruolo --</option>
-            <option value="Manager">Manager</option>
-            <option value="Associate Manager">Associate Manager</option>
-            <option value="Senior">Senior</option>
-            <option value="Associate">Associate</option>
-        </select>
+    <!-- Banner lock quando partita in corso -->
+    <div id="locked-banner" class="hidden mb-4 p-3 rounded bg-yellow-50 text-yellow-800 border border-yellow-200">
+        Partita in corso. Per aggiungere colleghi, premi <strong>Nuova partita</strong>.
     </div>
 
-    <button id="add-character-btn" class="w-full bg-gray-800 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition duration-200 mb-6">
-        Aggiungi Personaggio
-    </button>
+    <!-- SEZIONE BUILDER (si nasconde quando in_progress) -->
+    <div id="builder-section">
+        <div class="mb-6">
+            <label for="role-select" class="block text-sm font-medium text-gray-700 mb-2">Seleziona un ruolo</label>
+            <select id="role-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="">-- Seleziona un ruolo --</option>
+                <option value="Manager">Manager</option>
+                <option value="Associate Manager">Associate Manager</option>
+                <option value="Senior">Senior</option>
+                <option value="Associate">Associate</option>
+            </select>
+        </div>
 
-    <div id="characters-container" class="space-y-6 mb-6"></div>
+        <button id="add-character-btn" class="w-full bg-gray-800 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition duration-200 mb-6">
+            Aggiungi Personaggio
+        </button>
 
-    <button id="start-game-btn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition duration-200 font-medium">
-        Avvia Gioco
-    </button>
+        <div id="characters-container" class="space-y-6 mb-6"></div>
+
+        <!-- Avvia nuova partita -->
+        <button id="start-game-btn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition duration-200 font-medium">
+            Avvia Gioco
+        </button>
+    </div>
+
+    <!-- CONTROLLI RESUME (si mostrano quando in_progress) -->
+    <div id="resume-controls" class="hidden flex gap-3">
+        <button id="resume-game-btn" class="flex-1 bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition duration-200 font-medium">
+            Riprendi
+        </button>
+        <button id="new-game-btn" class="flex-1 bg-gray-800 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition duration-200 font-medium">
+            Nuova partita
+        </button>
+    </div>
 </div>
 
 <script src="js/setup.js"></script>

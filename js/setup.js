@@ -1,17 +1,49 @@
 // js/setup.js
-
 document.addEventListener("DOMContentLoaded", () => {
   const roleSelect = document.getElementById("role-select");
   const addCharacterBtn = document.getElementById("add-character-btn");
   const charactersContainer = document.getElementById("characters-container");
   const startGameBtn = document.getElementById("start-game-btn");
 
+  const builderSection = document.getElementById("builder-section");
+  const lockedBanner = document.getElementById("locked-banner");
+
+  const resumeControls = document.getElementById("resume-controls");
+  const resumeGameBtn = document.getElementById("resume-game-btn");
+  const newGameBtn = document.getElementById("new-game-btn");
+
   // Per tenere traccia dei personaggi aggiunti
   let characters = [];
 
-  // Funzione per creare un blocco personaggio
+  // ===== UI helpers =====
+  function disableBuilderUI(disabled) {
+    // bottone aggiungi
+    addCharacterBtn.disabled = disabled;
+    addCharacterBtn.classList.toggle("opacity-50", disabled);
+    addCharacterBtn.classList.toggle("cursor-not-allowed", disabled);
+    // select ruoli
+    roleSelect.disabled = disabled;
+    roleSelect.classList.toggle("opacity-50", disabled);
+    roleSelect.classList.toggle("cursor-not-allowed", disabled);
+  }
+
+  function setLayoutLocked(isLocked) {
+    if (isLocked) {
+      // nascondi tutto il builder, mostra banner e controlli resume
+      builderSection.classList.add("hidden");
+      lockedBanner.classList.remove("hidden");
+      resumeControls.classList.remove("hidden");
+      disableBuilderUI(true);
+    } else {
+      builderSection.classList.remove("hidden");
+      lockedBanner.classList.add("hidden");
+      resumeControls.classList.add("hidden");
+      disableBuilderUI(false);
+    }
+  }
+
+  // ===== Builder: crea blocco personaggio =====
   function createCharacterBlock(role) {
-    // Controlla se quel ruolo è già stato aggiunto
     if (characters.includes(role)) {
       alert(`${role} è già stato aggiunto.`);
       return;
@@ -36,7 +68,6 @@ document.addEventListener("DOMContentLoaded", () => {
       <textarea class="traits-input w-full p-2 border rounded" rows="2" placeholder="Descrivi il carattere del ${role}"></textarea>
     `;
 
-    // Rimuovi personaggio
     wrapper.querySelector(".remove-character").addEventListener("click", () => {
       characters = characters.filter(r => r !== role);
       wrapper.remove();
@@ -45,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
     charactersContainer.appendChild(wrapper);
   }
 
-  // Aggiungi personaggio al click
+  // ===== Aggiungi personaggio =====
   addCharacterBtn.addEventListener("click", () => {
     const role = roleSelect.value;
     if (!role) {
@@ -55,22 +86,38 @@ document.addEventListener("DOMContentLoaded", () => {
     createCharacterBlock(role);
   });
 
-  // Avvia Gioco
+  // ===== Stato gioco & layout =====
+  const gameState = localStorage.getItem("gameState");
+  // Se c'è una partita in corso, blocchiamo il builder e mostriamo Riprendi/Nuova partita
+  setLayoutLocked(gameState === "in_progress");
+
+  // ===== Avvia nuova partita =====
   startGameBtn.addEventListener("click", () => {
     const data = {};
-
     document.querySelectorAll("#characters-container > div").forEach(block => {
       const role = block.dataset.role;
       const name = block.querySelector(".name-input").value.trim() || role;
       const traits = block.querySelector(".traits-input").value.trim();
-
       data[role] = { name, traits };
     });
 
-    // Salva su localStorage
     localStorage.setItem("characters", JSON.stringify(data));
-
-    // Vai al gioco
+    localStorage.setItem("gameState", "in_progress"); // segna partita attiva
     window.location.href = "index.html";
+  });
+
+  // ===== Riprendi partita =====
+  resumeGameBtn?.addEventListener("click", () => {
+    window.location.href = "index.html";
+  });
+
+  // ===== Nuova partita (reset) =====
+  newGameBtn?.addEventListener("click", () => {
+    localStorage.removeItem("characters");
+    localStorage.setItem("gameState", "ended");
+    // sblocca il layout (senza reload potresti voler pulire charactersContainer)
+    characters = [];
+    charactersContainer.innerHTML = "";
+    setLayoutLocked(false);
   });
 });

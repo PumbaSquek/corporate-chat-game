@@ -1,8 +1,11 @@
 // js/app.js
 (() => {
-
   // ====== Config API Base URL ======
   const apiBaseUrl = `${window.location.protocol}//${window.location.hostname}:3000`;
+
+  // ====== Costanti globali ======
+  const PLAYER_ID = 99;
+  const FALLBACK_TASK_TITLE = "Task di fallback";
 
   // ====== Traduzioni ======
   const translations = {
@@ -36,7 +39,7 @@
     { id: 2, role: "Associate Manager", status: "away", initial: "AM", name: "Associate Manager" },
     { id: 3, role: "Senior", status: "online", initial: "S", name: "Senior" },
     { id: 4, role: "Associate", status: "offline", initial: "A", name: "Associate" },
-    { id: 99, role: "Analyst", status: "online", initial: "Y", name: "You" }
+    { id: PLAYER_ID, role: "Analyst", status: "online", initial: "Y", name: "You" }
   ];
 
   // ====== Override da Setup (se presenti) ======
@@ -64,7 +67,12 @@
   let suspicionLevel = 0;
   let managerSessionId = null;
   let taskInterval = null;
-  const sampleMessages = {};
+
+  // Inizializza messaggi vuoti per ogni contatto
+  const sampleMessages = contacts.reduce((acc, c) => {
+    acc[c.id] = [];
+    return acc;
+  }, {});
 
   // ====== Cache DOM ======
   const contactsList = document.getElementById("contacts-list");
@@ -111,20 +119,16 @@
     async sendMessage(contactId, text) {
       const contact = contacts.find(c => c.id === contactId);
 
+      // 🔹 Se non è il Manager → messaggio fisso
       if (!contact || contact.role !== "Manager") {
-        const replyPool = [
-          "Got it, thanks!",
-          "I'll look into that.",
-          "Let me check and get back to you.",
-          "Sounds good!",
-          "Can you send me more details?",
-        ];
         return {
-          reply: replyPool[Math.floor(Math.random() * replyPool.length)],
-          suspicionChange: 0
+          reply: "Scrivi al Manager, ancora mi devi sviluppare...",
+          suspicionChange: 0,
+          taskStatus: null
         };
       }
 
+      // 🔹 Altrimenti gestito dal backend
       try {
         const res = await fetch(`${apiBaseUrl}/api/manager/evaluate`, {
           method: "POST",
@@ -163,7 +167,7 @@
         id: Date.now(),
         title: data.title,
         assignedBy: managerId,
-        assignedTo: 99,
+        assignedTo: PLAYER_ID,
         status: "assigned",
         deadline: Date.now() + (3 + Math.floor(Math.random() * 5)) * 60 * 1000
       };
@@ -173,9 +177,9 @@
       console.error("Errore generazione task:", err);
       const task = {
         id: Date.now(),
-        title: "Task di fallback",
+        title: FALLBACK_TASK_TITLE,
         assignedBy: managerId,
-        assignedTo: 99,
+        assignedTo: PLAYER_ID,
         status: "assigned",
         deadline: Date.now() + 5 * 60 * 1000
       };
@@ -187,7 +191,7 @@
   // ====== Render Contacts ======
   function renderContacts() {
     contactsList.innerHTML = "";
-    const visibleContacts = contacts.filter(c => c.id !== 99);
+    const visibleContacts = contacts.filter(c => c.id !== PLAYER_ID);
     visibleContacts.forEach((c) => {
       const row = document.createElement("div");
       row.className = `flex items-center space-x-3 p-2 rounded-lg cursor-pointer hover:bg-gray-100 ${
@@ -283,7 +287,6 @@
       taskInterval = startTaskLoop();
 
       generateTask(manager.id).then((newTask) => {
-        sampleMessages[manager.id] = sampleMessages[manager.id] || [];
         sampleMessages[manager.id].push({
           text: `New task assigned: ${newTask.title}`,
           sender: manager.name,
@@ -300,6 +303,16 @@
         }
       });
     });
+
+    document.getElementById("menu-btn").addEventListener("click", () => {
+      localStorage.setItem("gameState", "in_progress");
+      window.location.href = "setup.html";
+    });
+
+    // 🔹 Chiudi interval al refresh
+    window.addEventListener("beforeunload", () => {
+      if (taskInterval) clearInterval(taskInterval);
+    });
   }
 
   // ====== Render Tasks ======
@@ -307,8 +320,9 @@
     tasksTableBody.innerHTML = "";
     if (tasks.length === 0) {
       const row = document.createElement("tr");
-      row.innerHTML = `<td colspan="5" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
+      row.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
       tasksTableBody.appendChild(row);
+      updateTaskBadge();
       return;
     }
     tasks.forEach(task => {
@@ -319,10 +333,52 @@
         <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
         <td class="p-2 border">${task.status}</td>
         <td class="p-2 border">${new Date(task.deadline).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</td>
+        <td class="p-2 border">
+          <button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>
+          <button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>
+          <button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>
+        </td>
       `;
       tasksTableBody.appendChild(row);
     });
+    updateTaskBadge();
   }
+
+  // ====== Gestione azioni sui task ======
+  tasksTableBody.addEventListener("click", (e) => {
+    const taskId = Number(e.target.dataset.id);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (e.target.classList.contains("start-task-btn")) {
+      task.status = "in_progress";
+      alert(`QUIZ placeholder per: ${task.title}`);
+      renderTasks();
+    }
+
+    if (e.target.classList.contains("delegate-task-btn")) {
+      const colleagues = contacts.filter(c => c.id !== PLAYER_ID && c.role !== "Manager");
+      if (colleagues.length === 0) return alert("Nessun collega disponibile!");
+
+      const chosen = colleagues[Math.floor(Math.random() * colleagues.length)];
+      task.status = "delegated";
+      task.assignedTo = chosen.id;
+
+      sampleMessages[chosen.id].push({
+        text: `Ti è stato delegato: ${task.title}`,
+        sender: "system",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
+
+      renderTasks();
+    }
+
+    if (e.target.classList.contains("fail-task-btn")) {
+      task.status = "failed";
+      updateSuspicion(suspicionLevel + 10);
+      renderTasks();
+    }
+  });
 
   // ====== Seleziona Contatto ======
   function selectContact(contactId) {
@@ -344,7 +400,6 @@
     const text = messageInput.value.trim();
     if (!text || !currentContact) return;
     const msg = { text, sender: "user", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-    if (!sampleMessages[currentContact.id]) sampleMessages[currentContact.id] = [];
     sampleMessages[currentContact.id].push(msg);
     messageInput.value = "";
     renderMessages();
@@ -356,7 +411,6 @@
       if (res.taskStatus && tasks.length > 0) {
         tasks[tasks.length - 1].status = res.taskStatus;
         renderTasks();
-        updateTaskBadge();
       }
     });
   }
@@ -366,9 +420,8 @@
     return setInterval(() => {
       const manager = contacts.find(c => c.role === "Manager");
       if (!manager) return;
-      if (tasks.filter(t => t.assignedTo === 99 && ["assigned","in_progress"].includes(t.status)).length >= 3) return;
+      if (tasks.filter(t => t.assignedTo === PLAYER_ID && ["assigned","in_progress"].includes(t.status)).length >= 3) return;
       generateTask(manager.id).then((newTask) => {
-        sampleMessages[manager.id] = sampleMessages[manager.id] || [];
         sampleMessages[manager.id].push({
           text: `New task assigned: ${newTask.title}`,
           sender: manager.name,
@@ -376,7 +429,6 @@
         });
         if (currentContact && currentContact.id === manager.id) renderMessages();
         renderTasks();
-        updateTaskBadge();
 
         const sound = document.getElementById("task-sound");
         if (sound) {
