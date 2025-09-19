@@ -187,7 +187,7 @@ app.post('/api/manager/new-task', async (req, res) => {
 });
 
 /**
- * DELEGATE un task a un collega (gestito dall'IA)
+ * DELEGATE un task a un collega (gestito dall'IA via axios, coerente con altri endpoint)
  */
 app.post('/api/manager/delegate', async (req, res) => {
   const { sessionId, suspicion, openTasks, delegateTaskTitle, delegateTargetId, playerMessage } = req.body;
@@ -197,12 +197,14 @@ app.post('/api/manager/delegate', async (req, res) => {
 
   const messages = sessions.get(sessionId);
 
-  // Conta quanti task ha già il collega target
-  const tasksForTarget = (openTasks || []).filter(
-    t => t.assignedTo === delegateTargetId && (t.status === "assigned" || t.status === "in_progress")
+  // Quanti task ha già il collega target (consideriamo solo quelli assegnati/non chiusi)
+  const tasksForTarget = openTasks.filter(t =>
+    t.assignedTo === delegateTargetId && (t.status === "assigned" || t.status === "in_progress")
   ).length;
 
-  const delegateTargetName = (openTasks.find(t => t.assignedTo === delegateTargetId)?.assignedToName) || "collega";
+  // Proviamo a ricavare un nome umano per il collega target (se lo passi lato FE puoi includere assignedToName)
+  const delegateTargetName =
+    openTasks.find(t => t.assignedTo === delegateTargetId && t.assignedToName)?.assignedToName || "collega";
 
   const userContent = `
 Il giocatore (Analyst) sta chiedendo di delegare un task.
@@ -219,9 +221,10 @@ Messaggio del giocatore:
 
 Istruzioni:
 - Decidi se la delega può essere accettata o no.
-- Se la accetti, il sospetto deve aumentare solo di poco (1-5).
-- Se la rifiuti, il sospetto deve aumentare molto di più (5-15).
-- La tua risposta deve essere coerente col carattere del Manager (severo, aziendale).
+- Se accetti la delega, il sospetto deve aumentare poco (1-5).
+- Se rifiuti la delega, il sospetto deve aumentare di più (5-15).
+- Per determinare di quanto alzare il sospetto, basati anche sul modo in cui ti viene chiesto.
+- La risposta deve essere coerente col carattere del Manager e lunga almeno due frasi.
 - Rispondi SOLO in JSON valido nel formato:
 
 {
@@ -229,32 +232,54 @@ Istruzioni:
   "suspicionChange": <numero intero>,
   "reply": "<risposta in italiano, almeno 2 frasi>"
 }
-`;
+`.trim();
 
   try {
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [...messages, { role: "user", content: userContent }],
+    const baseURL = process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1';
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    const payload = {
+      model,
+      messages: [
+        // Manteniamo il contesto di conversazione della sessione
+        ...messages,
+        { role: "user", content: userContent }
+      ],
       response_format: { type: "json_object" }
-    });
+    };
 
-    const raw = completion.choices[0].message.content;
-    const parsed = JSON.parse(raw);
+    const headers = {
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+      // (opzionali)
+      // 'HTTP-Referer': 'http://localhost:3000',
+      // 'X-Title': 'Corporate Chat'
+    };
 
-    // Aggiorna la sessione con la conversazione
+    const r = await axios.post(`${baseURL}/chat/completions`, payload, { headers });
+    const raw = r?.data?.choices?.[0]?.message?.content || '{}';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Fallback robusto se il modello non rispetta perfettamente il JSON
+      parsed = { delegateAccepted: false, suspicionChange: 8, reply: "Capisco la richiesta, ma per ora preferisco che te ne occupi tu. Ne riparliamo a consegna avvenuta." };
+    }
+
+    // Persistiamo nel thread la richiesta e la risposta “raw”
     messages.push({ role: "user", content: userContent });
     messages.push({ role: "assistant", content: raw });
-    sessions.set(sessionId, messages);
 
-    res.json(parsed);
+    return res.json({
+      delegateAccepted: !!parsed.delegateAccepted,
+      suspicionChange: Number.isFinite(parsed.suspicionChange) ? parsed.suspicionChange : 6,
+      reply: parsed.reply || "Ricevuto. Procediamo così, ma tieni presente che monitoro la situazione."
+    });
   } catch (err) {
     console.error("Errore nella delega IA:", err);
-    res.status(500).json({ error: "delegate_failed" });
+    return res.status(500).json({ error: "delegate_failed" });
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`API server ready on http://localhost:${PORT}`);
 });
 
 /* ===== Helpers ===== */
