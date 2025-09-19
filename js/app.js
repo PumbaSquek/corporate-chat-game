@@ -70,6 +70,13 @@
     { id: PLAYER_ID, role: "Analyst", status: "online", initial: "Y", name: "You" }
   ];
 
+  // Se non c'è una partita in corso (gameState !== "in_progress"),
+  // elimina i personaggi salvati per evitare nomi residui da partite precedenti.
+  const gameStateFlag = localStorage.getItem("gameState");
+  if (gameStateFlag !== "in_progress") {
+    localStorage.removeItem("characters");
+  }
+
   // ====== Override da Setup ======
   const savedCharacters = JSON.parse(localStorage.getItem("characters") || "{}");
   Object.entries(savedCharacters).forEach(([role, info]) => {
@@ -190,9 +197,9 @@
         console.error("Errore fetch evaluate:", err);
         return { reply: "Non riesco a rispondere ora.", suspicionChange: 0, taskStatus: "failed" };
       }
-    }
+    },
 
-    , async delegateTask(delegateTaskTitle, delegateTargetId, playerMessage) {
+    async delegateTask(delegateTaskTitle, delegateTargetId, playerMessage) {
       try {
         const res = await fetch(`${apiBaseUrl}/api/manager/delegate`, {
           method: "POST",
@@ -219,53 +226,49 @@
     }
   };
 
-
   // ====== Genera Task ======
-async function generateTask(managerId) {
-  /**
-   * Crea un nuovo task da assegnare all'Analyst. Il backend ritorna un titolo
-   * per il task, ma se la chiamata fallisce o il titolo non è presente viene
-   * utilizzato un fallback. La deadline del task viene sempre calcolata come
-   * un numero casuale di giorni (1–3) a partire dal giorno corrente.
-   */
-  try {
-    const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
-    });
-    const data = await res.json();
+  async function generateTask(managerId) {
+    /**
+     * Crea un nuovo task da assegnare all'Analyst. Il backend ritorna un titolo
+     * e (ora) una difficoltà. La deadline del task viene calcolata come
+     * currentDay + difficulty. In fallback, difficulty=1 e deadline casuale 1–3.
+     */
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: managerSessionId, suspicion: suspicionLevel, openTasks: tasks })
+      });
+      const data = await res.json();
 
-    // Se il server ritorna un titolo valido lo usiamo, altrimenti fallback
-    const title = data && data.title ? data.title : FALLBACK_TASK_TITLE;
-    const deltaDays = Math.floor(Math.random() * 3) + 1;
-    const task = {
-      id: Date.now(),
-      title: title,
-      assignedBy: managerId,
-      assignedTo: PLAYER_ID,
-      status: "assigned",
-      deadlineDay: currentDay + deltaDays
-    };
-    tasks.push(task);
-    return task;
-  } catch (err) {
-    // In caso di errore, crea comunque un task di fallback
-    console.error("Errore generazione task:", err);
-    const deltaDays = Math.floor(Math.random() * 3) + 1;
-    const task = {
-      id: Date.now(),
-      title: FALLBACK_TASK_TITLE,
-      assignedBy: managerId,
-      assignedTo: PLAYER_ID,
-      status: "assigned",
-      deadlineDay: currentDay + deltaDays
-    };
-    tasks.push(task);
-    return task;
+      const task = {
+        id: Date.now(),
+        title: data.title || "Task di fallback",
+        difficulty: data.difficulty || 1,       // nuovo campo (1..5)
+        assignedBy: managerId,
+        assignedTo: PLAYER_ID,
+        status: "assigned",
+        deadlineDay: currentDay + (data.difficulty || 1)  // deadline = difficoltà
+      };
+      tasks.push(task);
+      return task;
+    } catch (err) {
+      // In caso di errore, crea comunque un task di fallback
+      console.error("Errore generazione task:", err);
+      const deltaDays = Math.floor(Math.random() * 3) + 1;
+      const task = {
+        id: Date.now(),
+        title: FALLBACK_TASK_TITLE,
+        difficulty: 1,
+        assignedBy: managerId,
+        assignedTo: PLAYER_ID,
+        status: "assigned",
+        deadlineDay: currentDay + deltaDays
+      };
+      tasks.push(task);
+      return task;
+    }
   }
-}
-
 
   // ====== Giorno Corrente ======
   function updateDayLabel() {
@@ -276,40 +279,40 @@ async function generateTask(managerId) {
   }
 
   // ====== Mostra riepilogo giornaliero ======
-function showDailySummary() {
-  const dailyTasksDiv = document.getElementById("daily-tasks");
-  dailyTasksDiv.innerHTML = "";
+  function showDailySummary() {
+    const dailyTasksDiv = document.getElementById("daily-tasks");
+    dailyTasksDiv.innerHTML = "";
 
-  if (tasks.length === 0) {
-    dailyTasksDiv.innerHTML = `<p class="text-gray-500 italic">Nessun task oggi.</p>`;
-  } else {
-    tasks.forEach(task => {
-      // 🔹 Normalizza se esiste ancora un campo "deadline"
-      if (!task.deadlineDay && task.deadline) {
-        const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
-        task.deadlineDay = currentDay + Math.max(1, daysFromNow);
-        delete task.deadline;
-      }
+    if (tasks.length === 0) {
+      dailyTasksDiv.innerHTML = `<p class="text-gray-500 italic">Nessun task oggi.</p>`;
+    } else {
+      tasks.forEach(task => {
+        // 🔹 Normalizza se esiste ancora un campo "deadline"
+        if (!task.deadlineDay && task.deadline) {
+          const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
+          task.deadlineDay = currentDay + Math.max(1, daysFromNow);
+          delete task.deadline;
+        }
 
-      const label = task.deadlineDay > currentDay
-        ? `Giorno ${task.deadlineDay}`
-        : `Scaduto`;
+        const label = task.deadlineDay > currentDay
+          ? `Giorno ${task.deadlineDay}`
+          : `Scaduto`;
 
-      const div = document.createElement("div");
-      div.className = "p-2 border rounded bg-gray-50";
-      div.innerHTML = `
-        <strong>${task.title}</strong><br>
-        Stato: ${task.status}<br>
-        Deadline: ${label}
-      `;
-      dailyTasksDiv.appendChild(div);
-    });
+        const div = document.createElement("div");
+        div.className = "p-2 border rounded bg-gray-50";
+        div.innerHTML = `
+          <strong>${task.title}</strong><br>
+          Difficoltà: ${task.difficulty ?? 1}/5<br>
+          Stato: ${task.status}<br>
+          Deadline: ${label}
+        `;
+        dailyTasksDiv.appendChild(div);
+      });
+    }
+
+    updateDayLabel();
+    dailyModal.classList.remove("hidden");
   }
-
-  updateDayLabel();
-  dailyModal.classList.remove("hidden");
-}
-
 
   // ====== Render Contacts ======
   function renderContacts() {
@@ -387,51 +390,56 @@ function showDailySummary() {
     }
   }
 
-// ====== Render Tasks ======
-function renderTasks() {
-  tasksTableBody.innerHTML = "";
-  if (tasks.length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
-    tasksTableBody.appendChild(row);
-    updateTaskBadge();
-    return;
-  }
-
-  tasks.forEach(task => {
-    // 🔹 Normalizza se esiste ancora un campo "deadline"
-    if (!task.deadlineDay && task.deadline) {
-      const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
-      task.deadlineDay = currentDay + Math.max(1, daysFromNow);
-      delete task.deadline;
+  // ====== Render Tasks ======
+  function renderTasks() {
+    tasksTableBody.innerHTML = "";
+    if (tasks.length === 0) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500 italic">No open tasks</td>`;
+      tasksTableBody.appendChild(row);
+      updateTaskBadge();
+      return;
     }
 
-    const deadlineLabel = task.deadlineDay > currentDay
-      ? `Giorno ${task.deadlineDay}`
-      : `Scaduto`;
+    tasks.forEach(task => {
+      // 🔹 Normalizza se esiste ancora un campo "deadline"
+      if (!task.deadlineDay && task.deadline) {
+        const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
+        task.deadlineDay = currentDay + Math.max(1, daysFromNow);
+        delete task.deadline;
+      }
 
-    const row = document.createElement("tr");
-    // Determina quali azioni mostrare in base allo stato del task
-    const showStart = task.status === "assigned";
-    const showDelegate = task.status === "assigned";
-    const showFail = task.status === "assigned";
-    row.innerHTML = `
-      <td class="p-2 border">${task.title}</td>
-      <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
-      <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
-      <td class="p-2 border">${task.status}</td>
-      <td class="p-2 border">${deadlineLabel}</td>
-      <td class="p-2 border">
-        ${showStart ? `<button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>` : ""}
-        ${showDelegate ? `<button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>` : ""}
-        ${showFail ? `<button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>` : ""}
-      </td>
-    `;
-    tasksTableBody.appendChild(row);
-  });
+      const deadlineLabel = task.deadlineDay > currentDay
+        ? `Giorno ${task.deadlineDay}`
+        : `Scaduto`;
 
-  updateTaskBadge();
-}
+      const row = document.createElement("tr");
+      // Determina quali azioni mostrare in base allo stato del task
+      const showStart = task.status === "assigned";
+      const showDelegate = task.status === "assigned";
+      const showFail = task.status === "assigned";
+      row.innerHTML = `
+        <td class="p-2 border">
+          ${task.title}
+          <span class="ml-2 inline-block text-[10px] px-2 py-[2px] rounded-full bg-gray-200 text-gray-700 align-middle">
+            Diff ${task.difficulty ?? 1}/5
+          </span>
+        </td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
+        <td class="p-2 border">${contacts.find(c => c.id === task.assignedTo)?.name || "-"}</td>
+        <td class="p-2 border">${task.status}</td>
+        <td class="p-2 border">${deadlineLabel}</td>
+        <td class="p-2 border">
+          ${showStart ? `<button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>` : ""}
+          ${showDelegate ? `<button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>` : ""}
+          ${showFail ? `<button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>` : ""}
+        </td>
+      `;
+      tasksTableBody.appendChild(row);
+    });
+
+    updateTaskBadge();
+  }
 
   // ====== Gestione azioni task ======
   tasksTableBody.addEventListener("click", (e) => {
@@ -463,8 +471,6 @@ function renderTasks() {
       // Apri la chat con il contatto che ha assegnato il task
       selectContact(task.assignedBy);
       // L'utente può ora scrivere un messaggio al manager per chiedere la delega.
-      // In futuro il messaggio verrà passato al backend/IA insieme alle info
-      // del task e dello stato di gioco.
     }
 
     if (e.target.classList.contains("fail-task-btn")) {
@@ -497,6 +503,7 @@ function renderTasks() {
     sampleMessages[currentContact.id].push(msg);
     messageInput.value = "";
     renderMessages();
+
     // Se stiamo parlando con il Manager e c'è una richiesta di delega pendente,
     // inoltra il messaggio all'endpoint di delega. Altrimenti usa il normale sendMessage.
     if (currentContact.role === "Manager" && currentDelegateTask) {
@@ -521,6 +528,7 @@ function renderTasks() {
           sampleMessages[currentContact.id].push(reply);
           renderMessages();
           updateSuspicion(suspicionLevel + res.suspicionChange);
+
           if (res.delegateAccepted) {
             // Aggiorna il task: delegato al collega
             currentDelegateTask.status = "delegated";
@@ -532,7 +540,13 @@ function renderTasks() {
               time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             });
           } else {
-            // Delega rifiutata: il task resta assegnato all'Analyst. Potresti segnare come failed o lasciare assigned.
+            // Delega rifiutata: dai feedback all’utente
+            sampleMessages[PLAYER_ID].push({
+              text: `Delega rifiutata: continua tu "${currentDelegateTask.title}".`,
+              sender: "system",
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            });
+            // Il task resta all’Analyst (assigned)
           }
           renderTasks();
           updateTaskBadge();
@@ -605,7 +619,7 @@ function renderTasks() {
       if (!manager) return;
       generateTask(manager.id).then((newTask) => {
         sampleMessages[manager.id].push({
-          text: `New task assigned: ${newTask.title}`,
+          text: `Nuovo task assegnato: ${newTask.title}`,
           sender: manager.name,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         });

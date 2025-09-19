@@ -28,16 +28,17 @@ Comportati SEMPRE in linea con queste caratteristiche, senza mai uscire dal ruol
 Il giocatore interpreta un Analyst che cerca di evitare o gestire i task.
 
 Regole di comportamento:
-- Parla SEMPRE in italiano, tono breve, aziendale, diretto.
-- Valuta i messaggi del giocatore: scuse, tentativi di delega, vaghezze.
-- Se evita di lavorare troppo spesso, aumenta il sospetto.
-- Valuta SOLO il messaggio corrente nel contesto dello stato fornito (task aperti, sospetto, task specifico).
+- Parla SEMPRE in italiano con tono aziendale, diretto e professionale, ma le tue risposte devono essere articolate: usa almeno due frasi (circa 30 parole) e fai trasparire il tuo carattere e le tue emozioni.
+- Valuta i messaggi del giocatore: scuse, tentativi di delega, vaghezze e domande. Se noti tentativi di delega ingiustificati o frequenti lamentele, alza il livello di sospetto.
+- Se il giocatore dimostra impegno o propone soluzioni concrete, puoi diminuire leggermente il sospetto.
+- Valuta SOLO il messaggio corrente nel contesto dello stato fornito (task aperti, sospetto, task specifico e eventuale destinatario per la delega).
+- Quando la richiesta riguarda una delega, analizza quanti task ha la persona a cui si vuole delegare e se la richiesta è ragionevole prima di accettare o rifiutare; anche delegare aumenta comunque il sospetto.
 - Rispondi SEMPRE e SOLO con JSON valido nel formato:
 
 {
   "suspicionChange": <numero intero da -10 a 20>,
   "taskStatus": "<delegated|in_progress|failed>",
-  "reply": "<messaggio breve e aziendale in italiano, coerente con il carattere ${traits}>"
+  "reply": "<messaggio in italiano di almeno due frasi, coerente con il carattere ${traits}>"
 }
 `
   };
@@ -78,7 +79,12 @@ Stato corrente:
 - Task aperti: ${formatTasks(openTasks)}
 - Task in questione: ${taskTitle}
 
-Risposta del giocatore:
+Istruzioni per te, Manager:
+- Valuta quanto il giocatore sia collaborativo o stia evitando il lavoro.
+- Se chiede di delegare, tieni conto del carico di lavoro degli altri e alza il sospetto in ogni caso, anche se accetti la delega.
+- Quando rispondi, scrivi almeno due frasi in italiano, coerenti con il tuo carattere e tono.
+
+Messaggio del giocatore:
 "${playerMessage}"
 
 Rispondi SOLO con JSON valido come da formato richiesto.
@@ -133,17 +139,18 @@ app.post('/api/manager/new-task', async (req, res) => {
 
   const messages = sessions.get(sessionId);
   const userContent = `
-Genera un NUOVO task da assegnare all'Analyst.
-Contesto:
-- Sospetto attuale: ${suspicion}%
-- Task già aperti: ${formatTasks(openTasks)}
+  Genera un NUOVO task di lavoro realistico relativo a SAP o ABAP da assegnare all'Analyst.
+  Il task deve sembrare un'attività aziendale o tecnica (es: analizzare payroll cluster, ottimizzare un report ABAP, creare un data element da se11).
+  Indica anche la difficoltà da 1 (banale) a 5 (molto complesso).
 
-Rispondi SOLO con JSON valido:
+  Rispondi SOLO con JSON valido in questo formato:
 
-{
-  "title": "<titolo del task in italiano, max 8 parole>"
-}
-`;
+  {
+    "title": "<titolo del task in italiano, max 8 parole>",
+    "difficulty": <numero intero tra 1 e 5>
+  }
+  `;
+
 
   messages.push({ role: "user", content: userContent });
 
@@ -180,44 +187,70 @@ Rispondi SOLO con JSON valido:
 });
 
 /**
- * DELEGATE un task a un collega
- * Simula la decisione del Manager (o dell'IA) se accettare la richiesta di delega.
- * Nel payload occorre fornire: sessionId, suspicion, openTasks, delegateTaskTitle,
- * delegateTargetId (id del collega a cui delegare), playerMessage.
- * Per ora viene usata una logica semplice: se il livello di sospetto è basso
- * e il collega non ha troppi task assegnati, la delega viene accettata.
- * In caso contrario viene rifiutata e il sospetto aumenta.
+ * DELEGATE un task a un collega (gestito dall'IA)
  */
-app.post('/api/manager/delegate', (req, res) => {
-  const { sessionId, suspicion, openTasks, delegateTaskTitle, delegateTargetId, playerMessage } = req.body || {};
+app.post('/api/manager/delegate', async (req, res) => {
+  const { sessionId, suspicion, openTasks, delegateTaskTitle, delegateTargetId, playerMessage } = req.body;
+
+  if (!OPENAI_API_KEY) return res.status(500).json({ error: 'missing_api_key' });
   if (!sessionId || !sessions.has(sessionId)) return res.status(400).json({ error: 'invalid_session' });
-  if (!delegateTaskTitle || !delegateTargetId) return res.status(400).json({ error: 'missing_params' });
 
-  // Calcola quanti task sono attualmente assegnati al collega destinazione
-  const tasksForTarget = (openTasks || []).filter(t => t.assignedTo === delegateTargetId && (t.status === 'assigned' || t.status === 'in_progress')).length;
+  const messages = sessions.get(sessionId);
 
-  // Logica semplice: se sospetto < 60 e il collega ha meno di 3 task, accetta la delega
-  let delegateAccepted;
-  let suspicionChange;
-  let reply;
-  if (Number(suspicion) < 60 && tasksForTarget < 3) {
-    delegateAccepted = true;
-    suspicionChange = -5;
-    reply = `Va bene, delego “${delegateTaskTitle}” al collega.`;
-  } else {
-    delegateAccepted = false;
-    suspicionChange = 5;
-    reply = `No, occupatene tu direttamente.`;
+  // Conta quanti task ha già il collega target
+  const tasksForTarget = (openTasks || []).filter(
+    t => t.assignedTo === delegateTargetId && (t.status === "assigned" || t.status === "in_progress")
+  ).length;
+
+  const delegateTargetName = (openTasks.find(t => t.assignedTo === delegateTargetId)?.assignedToName) || "collega";
+
+  const userContent = `
+Il giocatore (Analyst) sta chiedendo di delegare un task.
+
+Contesto attuale:
+- Livello di sospetto: ${suspicion}%
+- Task aperti dal giocatore: ${formatTasks(openTasks)}
+- Task da delegare: ${delegateTaskTitle}
+- Collega target: ${delegateTargetName}
+- Numero di task già assegnati al collega target: ${tasksForTarget}
+
+Messaggio del giocatore:
+"${playerMessage}"
+
+Istruzioni:
+- Decidi se la delega può essere accettata o no.
+- Se la accetti, il sospetto deve aumentare solo di poco (1-5).
+- Se la rifiuti, il sospetto deve aumentare molto di più (5-15).
+- La tua risposta deve essere coerente col carattere del Manager (severo, aziendale).
+- Rispondi SOLO in JSON valido nel formato:
+
+{
+  "delegateAccepted": true|false,
+  "suspicionChange": <numero intero>,
+  "reply": "<risposta in italiano, almeno 2 frasi>"
+}
+`;
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [...messages, { role: "user", content: userContent }],
+      response_format: { type: "json_object" }
+    });
+
+    const raw = completion.choices[0].message.content;
+    const parsed = JSON.parse(raw);
+
+    // Aggiorna la sessione con la conversazione
+    messages.push({ role: "user", content: userContent });
+    messages.push({ role: "assistant", content: raw });
+    sessions.set(sessionId, messages);
+
+    res.json(parsed);
+  } catch (err) {
+    console.error("Errore nella delega IA:", err);
+    res.status(500).json({ error: "delegate_failed" });
   }
-
-  // Registra il messaggio nella sessione per mantenere lo storico
-  const messages = sessions.get(sessionId) || [];
-  const contextMsg = `Richiesta delega per: ${delegateTaskTitle}\nCollega destinazione: ${delegateTargetId}\nMessaggio giocatore: ${playerMessage}`;
-  messages.push({ role: 'user', content: contextMsg });
-  messages.push({ role: 'assistant', content: JSON.stringify({ suspicionChange, delegateAccepted, reply }) });
-  sessions.set(sessionId, messages);
-
-  return res.json({ suspicionChange, delegateAccepted, reply });
 });
 
 app.listen(PORT, () => {
