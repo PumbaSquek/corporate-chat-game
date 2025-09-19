@@ -7,6 +7,31 @@
   const PLAYER_ID = 99;
   const FALLBACK_TASK_TITLE = "Task di fallback";
 
+  // ====== Stato delega ======
+  // Tiene traccia del task per cui è stata richiesta una delega.
+  // Questo permetterà in futuro di passare le informazioni al backend/IA
+  // una volta che l'utente avrà scritto un messaggio al manager.
+  let currentDelegateTask = null;
+
+  /**
+   * Trova un contatto a partire dal testo del messaggio.
+   * Cerca sia il nome che il ruolo in minuscolo.
+   * Restituisce l'oggetto contatto o null se non trovato.
+   */
+  function findContactFromMessage(text) {
+    const lower = (text || "").toLowerCase();
+    // Ordina i contatti diversi dal giocatore e dal Manager per evitare di ritornare il Manager stesso
+    const candidates = contacts.filter(c => c.id !== PLAYER_ID && c.role !== "Manager");
+    for (const c of candidates) {
+      const nameMatch = c.name && lower.includes(c.name.toLowerCase());
+      const roleMatch = c.role && lower.includes(c.role.toLowerCase());
+      // Gestione di ruoli composti, es. "Associate Manager" => cerca senza spazi
+      const roleNoSpaceMatch = c.role && lower.includes(c.role.toLowerCase().replace(/\s+/g, ""));
+      if (nameMatch || roleMatch || roleNoSpaceMatch) return c;
+    }
+    return null;
+  }
+
   // ====== Stato Giorni ======
   let currentDay = 1;
 
@@ -166,11 +191,43 @@
         return { reply: "Non riesco a rispondere ora.", suspicionChange: 0, taskStatus: "failed" };
       }
     }
+
+    , async delegateTask(delegateTaskTitle, delegateTargetId, playerMessage) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/manager/delegate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: managerSessionId,
+            suspicion: suspicionLevel,
+            openTasks: tasks,
+            delegateTaskTitle,
+            delegateTargetId,
+            playerMessage
+          })
+        });
+        const data = await res.json();
+        return {
+          reply: data.reply || "Non riesco a delegare ora.",
+          suspicionChange: data.suspicionChange || 0,
+          delegateAccepted: !!data.delegateAccepted
+        };
+      } catch (err) {
+        console.error("Errore fetch delegate:", err);
+        return { reply: "Errore delega.", suspicionChange: 0, delegateAccepted: false };
+      }
+    }
   };
 
 
   // ====== Genera Task ======
 async function generateTask(managerId) {
+  /**
+   * Crea un nuovo task da assegnare all'Analyst. Il backend ritorna un titolo
+   * per il task, ma se la chiamata fallisce o il titolo non è presente viene
+   * utilizzato un fallback. La deadline del task viene sempre calcolata come
+   * un numero casuale di giorni (1–3) a partire dal giorno corrente.
+   */
   try {
     const res = await fetch(`${apiBaseUrl}/api/manager/new-task`, {
       method: "POST",
@@ -179,47 +236,34 @@ async function generateTask(managerId) {
     });
     const data = await res.json();
 
- const task = {
-   id: Date.now(),
-   title: data.title,
-   assignedBy: managerId,
-   assignedTo: PLAYER_ID,
-   status: "assigned",
-   // 1..3 giorni direttamente
-   deadlineDay: currentDay + (Math.floor(Math.random() * 3) + 1)
- };
- tasks.push(task);
- return task;
-
-    // Normalizzazione legacy (solo se arriva ancora "deadline" vecchio)
-    if (!task.deadlineDay && task.deadline) {
-      const daysFromNow = Math.ceil((task.deadline - Date.now()) / (5 * 60 * 1000));
-      task.deadlineDay = currentDay + Math.max(1, daysFromNow);
-      delete task.deadline;
-    }
-
-    console.log('[generateTask][TRY] currentDay=%d deltaDays=%d deadlineDay=%d',
-      currentDay, deltaDays, task.deadlineDay);
-
+    // Se il server ritorna un titolo valido lo usiamo, altrimenti fallback
+    const title = data && data.title ? data.title : FALLBACK_TASK_TITLE;
+    const deltaDays = Math.floor(Math.random() * 3) + 1;
+    const task = {
+      id: Date.now(),
+      title: title,
+      assignedBy: managerId,
+      assignedTo: PLAYER_ID,
+      status: "assigned",
+      deadlineDay: currentDay + deltaDays
+    };
     tasks.push(task);
     return task;
-
   } catch (err) {
+    // In caso di errore, crea comunque un task di fallback
     console.error("Errore generazione task:", err);
-
-    const deltaDays = Math.floor(Math.random() * 3) + 1; // 1..3 anche nel fallback
-  const task = {
-    id: Date.now(),
-    title: FALLBACK_TASK_TITLE,
-    assignedBy: managerId,
-    assignedTo: PLAYER_ID,
-    status: "assigned",
-    // 1..3 giorni direttamente anche nel fallback
-    deadlineDay: currentDay + (Math.floor(Math.random() * 3) + 1)
-  };
-  tasks.push(task);
-  return task;
-    }
+    const deltaDays = Math.floor(Math.random() * 3) + 1;
+    const task = {
+      id: Date.now(),
+      title: FALLBACK_TASK_TITLE,
+      assignedBy: managerId,
+      assignedTo: PLAYER_ID,
+      status: "assigned",
+      deadlineDay: currentDay + deltaDays
+    };
+    tasks.push(task);
+    return task;
+  }
 }
 
 
@@ -367,6 +411,10 @@ function renderTasks() {
       : `Scaduto`;
 
     const row = document.createElement("tr");
+    // Determina quali azioni mostrare in base allo stato del task
+    const showStart = task.status === "assigned";
+    const showDelegate = task.status === "assigned";
+    const showFail = task.status === "assigned";
     row.innerHTML = `
       <td class="p-2 border">${task.title}</td>
       <td class="p-2 border">${contacts.find(c => c.id === task.assignedBy)?.name || "-"}</td>
@@ -374,9 +422,9 @@ function renderTasks() {
       <td class="p-2 border">${task.status}</td>
       <td class="p-2 border">${deadlineLabel}</td>
       <td class="p-2 border">
-        <button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>
-        <button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>
-        <button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>
+        ${showStart ? `<button class="start-task-btn bg-green-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Inizia</button>` : ""}
+        ${showDelegate ? `<button class="delegate-task-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2" data-id="${task.id}">Delega</button>` : ""}
+        ${showFail ? `<button class="fail-task-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">Ignora</button>` : ""}
       </td>
     `;
     tasksTableBody.appendChild(row);
@@ -392,23 +440,31 @@ function renderTasks() {
     if (!task) return;
 
     if (e.target.classList.contains("start-task-btn")) {
+      // Avvia il task e segnalo come completato. In futuro si potrà
+      // sostituire l'alert con un quiz vero; per ora dopo l'avvio
+      // consideriamo il task completato.
       task.status = "in_progress";
       alert(`QUIZ placeholder per: ${task.title}`);
+      task.status = "completed";
       renderTasks();
     }
 
     if (e.target.classList.contains("delegate-task-btn")) {
-      const colleagues = contacts.filter(c => c.id !== PLAYER_ID && c.role !== "Manager");
-      if (colleagues.length === 0) return alert("Nessun collega disponibile!");
-      const chosen = colleagues[Math.floor(Math.random() * colleagues.length)];
-      task.status = "delegated";
-      task.assignedTo = chosen.id;
-      sampleMessages[chosen.id].push({
-        text: `Ti è stato delegato: ${task.title}`,
-        sender: "system",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      });
-      renderTasks();
+      // Quando si clicca su "Delega" si apre la chat con chi ha assegnato
+      // il task (di solito il Manager). Viene anche salvato il task
+      // corrente in modo da poterlo utilizzare in seguito quando
+      // l'utente invia il messaggio. Non cambiamo lo stato né
+      // assegniamo ancora il task a un collega: sarà l'IA a decidere.
+      currentDelegateTask = task;
+      // Chiudi il modale dei task per vedere la chat
+      if (openTasksModal && !openTasksModal.classList.contains("hidden")) {
+        openTasksModal.classList.add("hidden");
+      }
+      // Apri la chat con il contatto che ha assegnato il task
+      selectContact(task.assignedBy);
+      // L'utente può ora scrivere un messaggio al manager per chiedere la delega.
+      // In futuro il messaggio verrà passato al backend/IA insieme alle info
+      // del task e dello stato di gioco.
     }
 
     if (e.target.classList.contains("fail-task-btn")) {
@@ -441,24 +497,84 @@ function renderTasks() {
     sampleMessages[currentContact.id].push(msg);
     messageInput.value = "";
     renderMessages();
-    API.sendMessage(currentContact.id, text).then((res) => {
-      const reply = { text: res.reply, sender: "contact", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-      sampleMessages[currentContact.id].push(reply);
-      renderMessages();
-      updateSuspicion(suspicionLevel + res.suspicionChange);
-      if (res.taskStatus && tasks.length > 0) {
-        tasks[tasks.length - 1].status = res.taskStatus;
-        renderTasks();
+    // Se stiamo parlando con il Manager e c'è una richiesta di delega pendente,
+    // inoltra il messaggio all'endpoint di delega. Altrimenti usa il normale sendMessage.
+    if (currentContact.role === "Manager" && currentDelegateTask) {
+      const target = findContactFromMessage(text);
+      if (!target) {
+        // Se non abbiamo trovato il collega a cui delegare, gestiamo come risposta normale
+        API.sendMessage(currentContact.id, text).then((res) => {
+          const reply = { text: res.reply, sender: "contact", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+          sampleMessages[currentContact.id].push(reply);
+          renderMessages();
+          updateSuspicion(suspicionLevel + res.suspicionChange);
+          if (res.taskStatus && tasks.length > 0) {
+            tasks[tasks.length - 1].status = res.taskStatus;
+            renderTasks();
+          }
+        });
+      } else {
+        // Chiede delega al backend
+        API.delegateTask(currentDelegateTask.title, target.id, text).then((res) => {
+          // Aggiungi la risposta del Manager
+          const reply = { text: res.reply, sender: "contact", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+          sampleMessages[currentContact.id].push(reply);
+          renderMessages();
+          updateSuspicion(suspicionLevel + res.suspicionChange);
+          if (res.delegateAccepted) {
+            // Aggiorna il task: delegato al collega
+            currentDelegateTask.status = "delegated";
+            currentDelegateTask.assignedTo = target.id;
+            // Invia un messaggio al collega delegato
+            sampleMessages[target.id].push({
+              text: `Ti è stato delegato: ${currentDelegateTask.title}`,
+              sender: "system",
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            });
+          } else {
+            // Delega rifiutata: il task resta assegnato all'Analyst. Potresti segnare come failed o lasciare assigned.
+          }
+          renderTasks();
+          updateTaskBadge();
+          // Resetta la richiesta di delega
+          currentDelegateTask = null;
+        });
       }
-    });
+    } else {
+      // Comportamento standard: invia messaggio al Manager o placeholder
+      API.sendMessage(currentContact.id, text).then((res) => {
+        const reply = { text: res.reply, sender: "contact", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+        sampleMessages[currentContact.id].push(reply);
+        renderMessages();
+        updateSuspicion(suspicionLevel + res.suspicionChange);
+        if (res.taskStatus && tasks.length > 0) {
+          tasks[tasks.length - 1].status = res.taskStatus;
+          renderTasks();
+        }
+      });
+    }
   }
 
   // ====== Loop Giorni ======
   function startDayLoop() {
     return setInterval(() => {
+      // Avanza al giorno successivo
       currentDay++;
+      // Controlla le scadenze: se un task non è completato o già fallito e la deadline è superata,
+      // segna il task come failed e aumenta il sospetto
+      tasks.forEach(task => {
+        if (task.status !== "completed" && task.status !== "failed") {
+          if (currentDay > task.deadlineDay) {
+            task.status = "failed";
+            updateSuspicion(suspicionLevel + 10);
+          }
+        }
+      });
+      // Aggiorna l'interfaccia
       updateDayLabel();
       showDailySummary();
+      renderTasks();
+      // Genera un nuovo task per il Manager
       const manager = contacts.find(c => c.role === "Manager");
       if (!manager) return;
       generateTask(manager.id).then((newTask) => {

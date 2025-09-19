@@ -179,6 +179,47 @@ Rispondi SOLO con JSON valido:
   }
 });
 
+/**
+ * DELEGATE un task a un collega
+ * Simula la decisione del Manager (o dell'IA) se accettare la richiesta di delega.
+ * Nel payload occorre fornire: sessionId, suspicion, openTasks, delegateTaskTitle,
+ * delegateTargetId (id del collega a cui delegare), playerMessage.
+ * Per ora viene usata una logica semplice: se il livello di sospetto è basso
+ * e il collega non ha troppi task assegnati, la delega viene accettata.
+ * In caso contrario viene rifiutata e il sospetto aumenta.
+ */
+app.post('/api/manager/delegate', (req, res) => {
+  const { sessionId, suspicion, openTasks, delegateTaskTitle, delegateTargetId, playerMessage } = req.body || {};
+  if (!sessionId || !sessions.has(sessionId)) return res.status(400).json({ error: 'invalid_session' });
+  if (!delegateTaskTitle || !delegateTargetId) return res.status(400).json({ error: 'missing_params' });
+
+  // Calcola quanti task sono attualmente assegnati al collega destinazione
+  const tasksForTarget = (openTasks || []).filter(t => t.assignedTo === delegateTargetId && (t.status === 'assigned' || t.status === 'in_progress')).length;
+
+  // Logica semplice: se sospetto < 60 e il collega ha meno di 3 task, accetta la delega
+  let delegateAccepted;
+  let suspicionChange;
+  let reply;
+  if (Number(suspicion) < 60 && tasksForTarget < 3) {
+    delegateAccepted = true;
+    suspicionChange = -5;
+    reply = `Va bene, delego “${delegateTaskTitle}” al collega.`;
+  } else {
+    delegateAccepted = false;
+    suspicionChange = 5;
+    reply = `No, occupatene tu direttamente.`;
+  }
+
+  // Registra il messaggio nella sessione per mantenere lo storico
+  const messages = sessions.get(sessionId) || [];
+  const contextMsg = `Richiesta delega per: ${delegateTaskTitle}\nCollega destinazione: ${delegateTargetId}\nMessaggio giocatore: ${playerMessage}`;
+  messages.push({ role: 'user', content: contextMsg });
+  messages.push({ role: 'assistant', content: JSON.stringify({ suspicionChange, delegateAccepted, reply }) });
+  sessions.set(sessionId, messages);
+
+  return res.json({ suspicionChange, delegateAccepted, reply });
+});
+
 app.listen(PORT, () => {
   console.log(`API server ready on http://localhost:${PORT}`);
 });
